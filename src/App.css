@@ -1208,6 +1208,12 @@
       inset 0 1px 0 rgba(255, 255, 255, 0.05);
   }
 
+  .mobile-draft-dock.mobile-draft-dock--dragging {
+    opacity: 0;
+    transform: translateY(calc(100% + env(safe-area-inset-bottom) + 16px));
+    pointer-events: none;
+  }
+
   .mobile-draft-dock .card-header {
     margin-bottom: 8px;
     flex-direction: row;
@@ -1273,7 +1279,7 @@
     padding: 3px 7px;
   }
 
-  .placement-anchor span {
+  .placement-anchor {
     display: none;
   }
 

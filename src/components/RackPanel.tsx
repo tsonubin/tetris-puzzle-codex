@@ -33,7 +33,7 @@ export function RackPanel({
 
   return (
     <section
-      className={`sidebar-card rack-panel ${mode}-only ${mode === 'mobile' ? 'mobile-draft-dock' : ''}`}
+      className={`sidebar-card rack-panel ${mode}-only ${mode === 'mobile' ? 'mobile-draft-dock' : ''} ${mode === 'mobile' && dragRackIndex !== null ? 'mobile-draft-dock--dragging' : ''}`}
     >
       <div className="card-header">
         <div>
