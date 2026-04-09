@@ -1,6 +1,7 @@
 import { type PointerEvent as ReactPointerEvent } from 'react'
 import { hasAnyRackFit, isRackEmpty, RACK_SIZE, type Board, type RackPiece } from '../game'
 import { PiecePreview } from './PiecePreview'
+import { type AppMessages } from '../i18n'
 
 type RackPanelProps = {
   mode: 'desktop' | 'mobile'
@@ -9,6 +10,7 @@ type RackPanelProps = {
   isCoarsePointer: boolean
   selectedRackIndex: number | null
   dragRackIndex: number | null
+  copy: AppMessages['rack']
   onRackCardClick: (index: number) => void
   onRackPointerDown: (event: ReactPointerEvent<HTMLButtonElement>, index: number) => void
   onRackPointerMove: (event: ReactPointerEvent<HTMLButtonElement>, index: number) => void
@@ -23,6 +25,7 @@ export function RackPanel({
   isCoarsePointer,
   selectedRackIndex,
   dragRackIndex,
+  copy,
   onRackCardClick,
   onRackPointerDown,
   onRackPointerMove,
@@ -37,13 +40,13 @@ export function RackPanel({
     >
       <div className="card-header">
         <div>
-          <p className="card-label">Rack</p>
-          <h2>{mode === 'mobile' ? 'Draft Tray' : 'Current Draft'}</h2>
+          <p className="card-label">{copy.label}</p>
+          <h2>{mode === 'mobile' ? copy.mobileTitle : copy.desktopTitle}</h2>
         </div>
         <p className="card-note">
           {isRackEmpty(rack)
-            ? 'Fresh pieces arrive after this turn resolves.'
-            : `${remainingPieces}/${RACK_SIZE} pieces remaining`}
+            ? copy.freshPieces
+            : copy.piecesRemaining(remainingPieces, RACK_SIZE)}
         </p>
       </div>
 
@@ -71,18 +74,18 @@ export function RackPanel({
                     <div>
                       <p className="rack-name">{piece.name}</p>
                       <p className="rack-meta">
-                        {piece.mass} cells / {piece.width}x{piece.height}
+                        {piece.mass} {copy.cells} / {piece.width}x{piece.height}
                       </p>
                     </div>
                     <span className={`fit-badge ${isPlayable ? 'playable' : 'blocked'}`}>
-                      {isPlayable ? 'Fits' : 'Blocked'}
+                      {isPlayable ? copy.fits : copy.blocked}
                     </span>
                   </div>
                   <PiecePreview piece={piece} />
                 </>
               ) : (
                 <div className="rack-empty">
-                  <span>Placed</span>
+                  <span>{copy.placed}</span>
                 </div>
               )}
             </button>
@@ -91,9 +94,7 @@ export function RackPanel({
       </div>
 
       <p className={`interaction-copy ${mode === 'mobile' ? 'mobile-interaction-copy' : ''}`}>
-        {isCoarsePointer
-          ? 'Tap a piece to rotate it clockwise. Long-press a piece to drag it onto the board and release to place it.'
-          : 'Click a piece to select it, then click a board cell to place it. Press R to rotate clockwise, or long-press to drag and drop.'}
+        {isCoarsePointer ? copy.coarseHint : copy.fineHint}
       </p>
     </section>
   )

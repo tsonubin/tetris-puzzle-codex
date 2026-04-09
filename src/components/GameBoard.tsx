@@ -7,6 +7,7 @@ import {
   type RackPiece,
 } from '../game'
 import { formatPercent } from '../app/session'
+import { type AppMessages } from '../i18n'
 
 type ClearAnimationState = {
   pulse: number
@@ -46,6 +47,8 @@ type GameBoardProps = {
   boardRef: RefObject<HTMLDivElement | null>
   gameOverHeadline: string
   gameOverCopy: string
+  copy: AppMessages['board']
+  metricsCopy: AppMessages['metrics']
   onHoverCell: (cell: Coordinate) => void
   onBoardClick: (x: number, y: number) => void
   onStartNewGame: () => void
@@ -65,6 +68,8 @@ export function GameBoard({
   boardRef,
   gameOverHeadline,
   gameOverCopy,
+  copy,
+  metricsCopy,
   onHoverCell,
   onBoardClick,
   onStartNewGame,
@@ -73,11 +78,11 @@ export function GameBoard({
     <div className="board-card">
       <div className="card-header">
         <div>
-          <p className="card-label">Board</p>
-          <h2>Placement Arena</h2>
+          <p className="card-label">{copy.label}</p>
+          <h2>{copy.title}</h2>
         </div>
         <p className="card-note">
-          Clear full rows or columns. Occupancy: <strong>{formatPercent(fillRatio)}</strong>
+          {copy.clearHint} {copy.occupancy}: <strong>{formatPercent(fillRatio)}</strong>
         </p>
       </div>
 
@@ -128,7 +133,7 @@ export function GameBoard({
                   onMouseEnter={() => onHoverCell({ x, y })}
                   onFocus={() => onHoverCell({ x, y })}
                   onClick={() => onBoardClick(x, y)}
-                  aria-label={`Board cell ${x + 1}, ${y + 1}`}
+                  aria-label={copy.boardCellAria(x + 1, y + 1)}
                 />
               )
             }),
@@ -195,7 +200,7 @@ export function GameBoard({
                   } as CSSProperties
                 }
               >
-                <span>{preview?.valid ? 'Drop' : 'Blocked'}</span>
+                <span>{preview?.valid ? copy.drop : copy.blocked}</span>
               </div>
             </>
           ) : null}
@@ -203,27 +208,27 @@ export function GameBoard({
 
         {game.gameOver ? (
           <div className="gameover-overlay">
-            <p className="eyebrow">Run Over</p>
+            <p className="eyebrow">{copy.runOver}</p>
             <h3>{gameOverHeadline}</h3>
             <p className="gameover-copy">{gameOverCopy}</p>
 
             <div className="gameover-metrics">
               <div className="gameover-metric">
-                <span>Score</span>
+                <span>{copy.score}</span>
                 <strong>{game.score}</strong>
               </div>
               <div className="gameover-metric">
-                <span>Rank</span>
+                <span>{copy.rank}</span>
                 <strong>
                   {benchmark.rank} / {benchmark.overall}
                 </strong>
               </div>
               <div className="gameover-metric">
-                <span>Lines</span>
+                <span>{metricsCopy.lines}</span>
                 <strong>{game.totalLinesCleared}</strong>
               </div>
               <div className="gameover-metric">
-                <span>Rounds</span>
+                <span>{copy.rounds}</span>
                 <strong>{game.roundsCompleted}</strong>
               </div>
             </div>
@@ -233,17 +238,10 @@ export function GameBoard({
               className="gameover-button"
               onClick={onStartNewGame}
             >
-              Run it back
+              {copy.runItBack}
             </button>
           </div>
         ) : null}
-      </div>
-
-      <div className="notice-row">
-        <p className={`notice-pill ${game.gameOver ? 'failed' : ''}`}>{game.notice}</p>
-        <button type="button" className="reset-button" onClick={onStartNewGame}>
-          New run
-        </button>
       </div>
     </div>
   )

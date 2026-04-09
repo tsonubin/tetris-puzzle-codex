@@ -1,8 +1,9 @@
-@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DotGothic16&family=Press+Start+2P&family=ZCOOL+QingKe+HuangYou&display=swap');
 
 :root {
   font-family:
-    'Press Start 2P', 'Courier New', 'Lucida Console', 'SFMono-Regular', Menlo, Monaco, monospace;
+    'Press Start 2P', 'DotGothic16', 'ZCOOL QingKe HuangYou', 'Courier New', 'Lucida Console',
+    'SFMono-Regular', Menlo, Monaco, monospace;
   line-height: 1.5;
   font-weight: 400;
   font-size: 13px;
@@ -26,6 +27,19 @@
   --gb-danger: #c76970;
   --gb-success: #74bf66;
   --gb-accent: #ff9ac2;
+}
+
+:lang(zh-CN),
+:lang(zh-TW) {
+  font-family:
+    'ZCOOL QingKe HuangYou', 'Press Start 2P', 'DotGothic16', 'Courier New', 'Lucida Console',
+    'SFMono-Regular', Menlo, Monaco, monospace;
+}
+
+:lang(ja) {
+  font-family:
+    'DotGothic16', 'Press Start 2P', 'ZCOOL QingKe HuangYou', 'Courier New', 'Lucida Console',
+    'SFMono-Regular', Menlo, Monaco, monospace;
 }
 
 * {

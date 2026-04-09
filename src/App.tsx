@@ -31,11 +31,19 @@ import {
   saveMusicEnabled,
 } from './app/session'
 import { GameBoard } from './components/GameBoard'
+import { LanguageSwitcher } from './components/LanguageSwitcher'
 import { MusicToggle } from './components/MusicToggle'
 import { PiecePreview } from './components/PiecePreview'
 import { RackPanel } from './components/RackPanel'
 import { RunPanel } from './components/RunPanel'
 import { createSfxController, type SfxController } from './sfx'
+import {
+  getMessages,
+  readLanguageSetting,
+  resolveLocale,
+  saveLanguageSetting,
+  type LanguageSetting,
+} from './i18n'
 
 type DragState = {
   rackIndex: number
@@ -71,6 +79,9 @@ function App() {
   const [game, setGame] = useState<GameState>(() => initialSession.game)
   const [bestRun, setBestRun] = useState<BestRun | null>(() => readBestRun())
   const [musicEnabled, setMusicEnabled] = useState(() => readMusicEnabled())
+  const [languageSetting, setLanguageSetting] = useState<LanguageSetting>(() =>
+    readLanguageSetting(),
+  )
   const [isCoarsePointer, setIsCoarsePointer] = useState(() =>
     typeof window !== 'undefined'
       ? window.matchMedia('(pointer: coarse)').matches
@@ -91,6 +102,8 @@ function App() {
   const previousGameOverRef = useRef(game.gameOver)
 
   const benchmark = useMemo(() => calculateBenchmark(game), [game])
+  const locale = useMemo(() => resolveLocale(languageSetting), [languageSetting])
+  const copy = useMemo(() => getMessages(locale), [locale])
   const activeRackIndex = dragState?.rackIndex ?? selectedRackIndex
   const selectedPiece =
     activeRackIndex === null ? null : game.rack[activeRackIndex] ?? null
@@ -135,7 +148,7 @@ function App() {
     isCoarsePointer && isDraggingPiece && selectedPiece && resolvedHoverOrigin
       ? {
           title: selectedPiece.name,
-          detail: `${preview?.valid ? 'Release at' : 'Blocked at'} ${resolvedHoverOrigin.x + 1}, ${resolvedHoverOrigin.y + 1}`,
+          detail: `${preview?.valid ? copy.mobilePlacement.releaseAt : copy.mobilePlacement.blockedAt} ${resolvedHoverOrigin.x + 1}, ${resolvedHoverOrigin.y + 1}`,
         }
       : null
   const isNewRecord =
@@ -144,10 +157,12 @@ function App() {
     game.score > 0 &&
     bestRun.score === game.score &&
     bestRun.benchmarkScore === benchmark.overall
-  const gameOverHeadline = isNewRecord ? 'New Best Run' : 'No More Moves'
+  const gameOverHeadline = isNewRecord
+    ? copy.gameOver.newBestRun
+    : copy.gameOver.noMoreMoves
   const gameOverCopy = isNewRecord
-    ? 'You squeezed out your strongest run so far. Reset and see if you can beat the new mark.'
-    : 'None of the remaining draft pieces can fit on the board. Reset to start a fresh run.'
+    ? copy.gameOver.newBestCopy
+    : copy.gameOver.noMoreMovesCopy
 
   const getSfx = () => {
     if (!sfxRef.current) {
@@ -204,6 +219,14 @@ function App() {
   }, [musicEnabled])
 
   useEffect(() => {
+    saveLanguageSetting(languageSetting)
+  }, [languageSetting])
+
+  useEffect(() => {
+    document.documentElement.lang = locale
+  }, [locale])
+
+  useEffect(() => {
     if (typeof window === 'undefined') {
       return
     }
@@ -247,20 +270,23 @@ function App() {
     setGame((current) => {
       const piece = current.rack[targetIndex]
 
-      if (!piece) {
-        return current
-      }
+        if (!piece) {
+          return current
+        }
 
       const rack = current.rack.map((entry, index) =>
         index === targetIndex ? rotateRackPiece(piece, direction) : entry,
       )
 
-      return {
-        ...current,
-        rack,
-        notice: `${piece.name} rotated ${direction === 'cw' ? 'clockwise' : 'counterclockwise'}.`,
-      }
-    })
+        return {
+          ...current,
+          rack,
+          notice:
+            direction === 'cw'
+              ? copy.notices.rotatedClockwise(piece.name)
+              : copy.notices.rotatedCounterclockwise(piece.name),
+        }
+      })
 
     getSfx().rotate()
     setSelectedRackIndex(targetIndex)
@@ -403,7 +429,7 @@ function App() {
       getSfx().error()
       setGame((current) => ({
         ...current,
-        notice: `No room for ${piece.name.toLowerCase()} at ${resolvedOrigin.x + 1}, ${resolvedOrigin.y + 1}.`,
+        notice: copy.notices.noRoom(piece.name, resolvedOrigin.x + 1, resolvedOrigin.y + 1),
       }))
       return
     }
@@ -595,31 +621,38 @@ function App() {
     <main className="app-shell">
       <section className="top-strip desktop-only">
         <div className="title-cluster">
-          <p className="eyebrow">Grid Forge</p>
-          <h1>10x10 Tactical Stack</h1>
+          <p className="eyebrow">{copy.title.eyebrow}</p>
+          <h1>{copy.title.desktop}</h1>
         </div>
         <div className="top-strip-controls">
           <div className="top-metrics">
             <div className="top-metric">
-              <span>Score</span>
+              <span>{copy.metrics.score}</span>
               <strong>{game.score}</strong>
             </div>
             <div className="top-metric">
-              <span>Rank</span>
+              <span>{copy.metrics.rank}</span>
               <strong>{benchmark.rank}</strong>
             </div>
             <div className="top-metric">
-              <span>Lines</span>
+              <span>{copy.metrics.lines}</span>
               <strong>{game.totalLinesCleared}</strong>
             </div>
             <div className="top-metric">
-              <span>Pieces</span>
+              <span>{copy.metrics.pieces}</span>
               <strong>{remainingPieces}</strong>
             </div>
           </div>
+          <LanguageSwitcher
+            mode="desktop"
+            value={languageSetting}
+            copy={copy.language}
+            onChange={setLanguageSetting}
+          />
           <MusicToggle
             mode="desktop"
             musicEnabled={musicEnabled}
+            copy={copy.audio}
             onToggle={handleMusicToggle}
           />
         </div>
@@ -628,27 +661,34 @@ function App() {
       <section className="mobile-topbar mobile-only">
         <div className="mobile-brand">
           <div>
-            <p className="eyebrow">Grid Forge</p>
-            <h1>10x10 Run</h1>
+            <p className="eyebrow">{copy.title.eyebrow}</p>
+            <h1>{copy.title.mobile}</h1>
           </div>
+          <LanguageSwitcher
+            mode="mobile"
+            value={languageSetting}
+            copy={copy.language}
+            onChange={setLanguageSetting}
+          />
           <MusicToggle
             mode="mobile"
             musicEnabled={musicEnabled}
+            copy={copy.audio}
             onToggle={handleMusicToggle}
           />
         </div>
 
         <div className="mobile-stat-strip">
           <div className="mobile-stat">
-            <span>Score</span>
+            <span>{copy.metrics.score}</span>
             <strong>{game.score}</strong>
           </div>
           <div className="mobile-stat">
-            <span>Rank</span>
+            <span>{copy.metrics.rank}</span>
             <strong>{benchmark.rank}</strong>
           </div>
           <div className="mobile-stat">
-            <span>Lines</span>
+            <span>{copy.metrics.lines}</span>
             <strong>{game.totalLinesCleared}</strong>
           </div>
         </div>
@@ -669,6 +709,8 @@ function App() {
           boardRef={boardRef}
           gameOverHeadline={gameOverHeadline}
           gameOverCopy={gameOverCopy}
+          copy={copy.board}
+          metricsCopy={copy.metrics}
           onHoverCell={setHoveredCell}
           onBoardClick={handleBoardClick}
           onStartNewGame={startNewGame}
@@ -682,13 +724,21 @@ function App() {
             isCoarsePointer={isCoarsePointer}
             selectedRackIndex={selectedRackIndex}
             dragRackIndex={dragState?.rackIndex ?? null}
+            copy={copy.rack}
             onRackCardClick={handleRackCardClick}
             onRackPointerDown={handleRackPointerDown}
             onRackPointerMove={handleRackPointerMove}
             onRackPointerUp={finishPointerInteraction}
             onRackPointerCancel={cancelPointerInteraction}
           />
-          <RunPanel mode="desktop" game={game} benchmark={benchmark} bestRun={bestRun} />
+          <RunPanel
+            mode="desktop"
+            game={game}
+            benchmark={benchmark}
+            bestRun={bestRun}
+            copy={copy.run}
+            locale={locale}
+          />
         </aside>
       </section>
 
@@ -700,13 +750,21 @@ function App() {
           isCoarsePointer={isCoarsePointer}
           selectedRackIndex={selectedRackIndex}
           dragRackIndex={dragState?.rackIndex ?? null}
+          copy={copy.rack}
           onRackCardClick={handleRackCardClick}
           onRackPointerDown={handleRackPointerDown}
           onRackPointerMove={handleRackPointerMove}
           onRackPointerUp={finishPointerInteraction}
           onRackPointerCancel={cancelPointerInteraction}
         />
-        <RunPanel mode="mobile" game={game} benchmark={benchmark} bestRun={bestRun} />
+        <RunPanel
+          mode="mobile"
+          game={game}
+          benchmark={benchmark}
+          bestRun={bestRun}
+          copy={copy.run}
+          locale={locale}
+        />
       </section>
 
       {dragState && selectedPiece && !isCoarsePointer ? (

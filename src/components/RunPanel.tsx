@@ -1,14 +1,17 @@
 import { type BenchmarkSummary, type BestRun, type GameState } from '../game'
 import { formatDate } from '../app/session'
+import { type AppMessages, type SupportedLocale } from '../i18n'
 
 type RunPanelProps = {
   mode: 'desktop' | 'mobile'
   game: GameState
   benchmark: BenchmarkSummary
   bestRun: BestRun | null
+  copy: AppMessages['run']
+  locale: SupportedLocale
 }
 
-export function RunPanel({ mode, game, benchmark, bestRun }: RunPanelProps) {
+export function RunPanel({ mode, game, benchmark, bestRun, copy, locale }: RunPanelProps) {
   const efficiencyLabel =
     game.totalPlacedCells === 0
       ? '0%'
@@ -17,7 +20,7 @@ export function RunPanel({ mode, game, benchmark, bestRun }: RunPanelProps) {
   return (
     <section className={`sidebar-card ${mode}-only`}>
       <div className="card-header">
-        <p className="card-label">Run</p>
+        <p className="card-label">{copy.label}</p>
         <div className="hud-rank">
           <span>{benchmark.rank}</span>
           <strong>{benchmark.overall}</strong>
@@ -26,30 +29,30 @@ export function RunPanel({ mode, game, benchmark, bestRun }: RunPanelProps) {
 
       <div className="run-summary">
         <div className="summary-block">
-          <span className="summary-label">Benchmark</span>
+          <span className="summary-label">{copy.benchmark}</span>
           <strong>{benchmark.label}</strong>
         </div>
         <div className="summary-block">
-          <span className="summary-label">Status</span>
-          <strong>{game.gameOver ? 'Failed' : 'Live'}</strong>
+          <span className="summary-label">{copy.status}</span>
+          <strong>{game.gameOver ? copy.failed : copy.live}</strong>
         </div>
       </div>
 
       <div className={`metric-grid ${mode === 'mobile' ? 'mobile-metric-grid' : ''}`}>
         <div className="metric-card">
-          <span>Lines</span>
+          <span>{copy.lines}</span>
           <strong>{game.totalLinesCleared}</strong>
         </div>
         <div className="metric-card">
-          <span>Rounds</span>
+          <span>{copy.rounds}</span>
           <strong>{game.roundsCompleted}</strong>
         </div>
         <div className="metric-card">
-          <span>Combo</span>
+          <span>{copy.combo}</span>
           <strong>{game.maxCombo}</strong>
         </div>
         <div className="metric-card">
-          <span>Efficiency</span>
+          <span>{copy.efficiency}</span>
           <strong>{efficiencyLabel}</strong>
         </div>
       </div>
@@ -57,25 +60,23 @@ export function RunPanel({ mode, game, benchmark, bestRun }: RunPanelProps) {
       {bestRun ? (
         <div className={`record-grid ${mode === 'mobile' ? 'mobile-record-grid' : ''}`}>
           <div className="record-item">
-            <span>Best rank</span>
+            <span>{copy.bestRank}</span>
             <strong>
               {bestRun.benchmarkRank} / {bestRun.benchmarkScore}
             </strong>
           </div>
           <div className="record-item">
-            <span>Best score</span>
+            <span>{copy.bestScore}</span>
             <strong>{bestRun.score}</strong>
           </div>
           <div className="record-item">
-            <span>Best combo</span>
+            <span>{copy.bestCombo}</span>
             <strong>{bestRun.maxCombo}</strong>
           </div>
-          <p className="record-date">{formatDate(bestRun.playedAt)}</p>
+          <p className="record-date">{formatDate(bestRun.playedAt, locale)}</p>
         </div>
       ) : (
-        <p className="empty-copy">
-          Finish a run to save a local benchmark record in this browser.
-        </p>
+        <p className="empty-copy">{copy.emptyRecord}</p>
       )}
     </section>
   )
