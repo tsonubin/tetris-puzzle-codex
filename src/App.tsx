@@ -709,9 +709,9 @@ function App() {
         <RunPanel mode="mobile" game={game} benchmark={benchmark} bestRun={bestRun} />
       </section>
 
-      {dragState && selectedPiece ? (
+      {dragState && selectedPiece && !isCoarsePointer ? (
         <div
-          className={`drag-ghost ${isCoarsePointer ? 'mobile-drag-ghost' : 'desktop-drag-ghost'}`}
+          className="drag-ghost desktop-drag-ghost"
           style={
             {
               '--drag-x': `${dragState.pointerX}px`,
@@ -719,16 +719,7 @@ function App() {
             } as CSSProperties
           }
         >
-          {isCoarsePointer ? (
-            <>
-              <span className="drag-ghost-label">{selectedPiece.name}</span>
-              <span className={`drag-ghost-hint ${preview?.valid ? 'valid' : 'invalid'}`}>
-                {preview?.valid ? 'Release to place' : 'Blocked'}
-              </span>
-            </>
-          ) : (
-            <PiecePreview piece={selectedPiece} className="drag-piece-grid desktop-drag-piece-grid" />
-          )}
+          <PiecePreview piece={selectedPiece} className="drag-piece-grid desktop-drag-piece-grid" />
         </div>
       ) : null}
     </main>
