@@ -61,6 +61,11 @@ type ClearAnimationState = {
   columns: number[]
 }
 
+const MOBILE_DRAG_DROP_OFFSET = {
+  x: 0,
+  y: -86,
+}
+
 function App() {
   const [initialSession] = useState(createInitialSession)
   const [game, setGame] = useState<GameState>(() => initialSession.game)
@@ -326,6 +331,17 @@ function App() {
     }
   }
 
+  const getDragDropCoordinate = (
+    clientX: number,
+    clientY: number,
+    options?: { clampToBounds?: boolean },
+  ) => {
+    const adjustedX = isCoarsePointer ? clientX + MOBILE_DRAG_DROP_OFFSET.x : clientX
+    const adjustedY = isCoarsePointer ? clientY + MOBILE_DRAG_DROP_OFFSET.y : clientY
+
+    return getBoardCoordinate(adjustedX, adjustedY, options)
+  }
+
   const beginPointerDrag = (
     rackIndex: number,
     pointerId: number,
@@ -341,7 +357,7 @@ function App() {
       pointerX: clientX,
       pointerY: clientY,
     })
-    setHoveredCell(getBoardCoordinate(clientX, clientY, { clampToBounds: true }))
+    setHoveredCell(getDragDropCoordinate(clientX, clientY, { clampToBounds: true }))
   }
 
   const startNewGame = () => {
@@ -482,7 +498,9 @@ function App() {
       pointerX: event.clientX,
       pointerY: event.clientY,
     })
-    setHoveredCell(getBoardCoordinate(event.clientX, event.clientY, { clampToBounds: true }))
+    setHoveredCell(
+      getDragDropCoordinate(event.clientX, event.clientY, { clampToBounds: true }),
+    )
   }
 
   const finishPointerInteraction = (
@@ -496,7 +514,7 @@ function App() {
     }
 
     const currentDrag = dragState
-    const dropCell = getBoardCoordinate(event.clientX, event.clientY)
+    const dropCell = getDragDropCoordinate(event.clientX, event.clientY)
     const pressState = pressStateRef.current
 
     pressStateRef.current = null
