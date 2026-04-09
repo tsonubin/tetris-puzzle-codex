@@ -23,26 +23,37 @@ type SongJSON = {
 }
 
 type AudioContextLike = {
+  currentTime?: number
   close?: () => Promise<void>
+  createGain?: () => GainNode
+  createOscillator?: () => OscillatorNode
+  destination?: AudioDestinationNode
   resume?: () => Promise<void>
   state?: string
 }
 
-type CueHandle = {
-  conductor: Conductor
-  cleanup: () => void
+type SfxStep = {
+  durationMs: number
+  frequency?: number
+  gain?: number
+  type?: OscillatorType
+}
+
+type SfxAudioContext = AudioContextLike & {
+  currentTime: number
+  createGain: () => GainNode
+  createOscillator: () => OscillatorNode
+  destination: AudioDestinationNode
 }
 
 type LoopPlayer = {
   play: () => void
-  setTime?: (time: number | string) => void
+  loop?: (enabled: boolean) => void
   stop: (fadeOut?: boolean) => void
 }
 
 type BgmHandle = {
   conductor: Conductor
-  loopDurationMs: number
-  loopTimerId: number | null
   player: LoopPlayer
 }
 
@@ -88,160 +99,150 @@ function resumeContext(context: AudioContextLike | undefined) {
   return context.resume().catch(() => {})
 }
 
-function buildSelectSong() {
-  return createSong(
-    {
-      lead: { name: 'square', pack: 'oscillators' },
-    },
-    {
-      lead: ['sixteenth|B5'],
-    },
-    280,
-  )
+function getAudioContextConstructor() {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  return window.AudioContext ??
+    (window as Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext })
+      .webkitAudioContext ??
+    null
 }
 
-function buildRotateSong() {
-  return createSong(
-    {
-      lead: { name: 'square', pack: 'oscillators' },
-      accent: { name: 'triangle', pack: 'oscillators' },
-    },
-    {
-      lead: ['sixteenth|E5', 'sixteenth|B5'],
-      accent: ['eighth|E4'],
-    },
-    260,
-  )
+function buildSelectCue(): SfxStep[] {
+  return [{ frequency: 987.77, durationMs: 90, gain: 0.025, type: 'square' }]
 }
 
-function buildPlaceSong(mass: number) {
+function buildRotateCue(): SfxStep[] {
+  return [
+    { frequency: 659.25, durationMs: 75, gain: 0.024, type: 'square' },
+    { frequency: 987.77, durationMs: 95, gain: 0.02, type: 'triangle' },
+  ]
+}
+
+function buildPlaceCue(mass: number): SfxStep[] {
   const heavy = mass >= 6
   const huge = mass >= 9
-  const root = huge ? 'C3' : heavy ? 'E3' : 'G3'
-  const accent = huge ? 'G3' : heavy ? 'B3' : 'D4'
+  const root = huge ? 130.81 : heavy ? 164.81 : 196
+  const accent = huge ? 196 : heavy ? 246.94 : 293.66
 
-  return createSong(
-    {
-      pulse: { name: 'square', pack: 'oscillators' },
-      bass: { name: 'triangle', pack: 'oscillators' },
-    },
-    {
-      pulse: ['sixteenth|rest', `eighth|${accent}`],
-      bass: [`eighth|${root}`],
-    },
-    220,
-  )
+  return [
+    { durationMs: 35 },
+    { frequency: accent, durationMs: 110, gain: 0.024, type: 'square' },
+    { frequency: root, durationMs: 130, gain: 0.018, type: 'triangle' },
+  ]
 }
 
-function buildClearSong(lines: number) {
+function buildClearCue(lines: number): SfxStep[] {
   const clamped = Math.max(1, Math.min(lines, 4))
   const melody =
     clamped >= 4
-      ? ['sixteenth|C5', 'sixteenth|E5', 'sixteenth|G5', 'eighth|C6']
+      ? [523.25, 659.25, 783.99, 1046.5]
       : clamped === 3
-        ? ['sixteenth|B4', 'sixteenth|D5', 'sixteenth|G5']
+        ? [493.88, 587.33, 783.99]
         : clamped === 2
-          ? ['sixteenth|A4', 'sixteenth|D5']
-          : ['sixteenth|G4', 'sixteenth|C5']
+          ? [440, 587.33]
+          : [392, 523.25]
 
-  return createSong(
-    {
-      lead: { name: 'square', pack: 'oscillators' },
-      bass: { name: 'triangle', pack: 'oscillators' },
-    },
-    {
-      lead: melody,
-      bass: ['eighth|C4', 'eighth|E4'],
-    },
-    250,
-  )
+  return [
+    ...melody.map<SfxStep>((frequency, index) => ({
+      durationMs: index === melody.length - 1 ? 170 : 85,
+      frequency,
+      gain: 0.028,
+      type: 'square',
+    })),
+    { frequency: 261.63, durationMs: 140, gain: 0.018, type: 'triangle' },
+    { frequency: 329.63, durationMs: 140, gain: 0.015, type: 'triangle' },
+  ]
 }
 
-function buildErrorSong() {
-  return createSong(
-    {
-      buzz: { name: 'sawtooth', pack: 'oscillators' },
-    },
-    {
-      buzz: ['eighth|A2', 'eighth|F2'],
-    },
-    180,
-  )
+function buildErrorCue(): SfxStep[] {
+  return [
+    { frequency: 110, durationMs: 120, gain: 0.02, type: 'sawtooth' },
+    { frequency: 87.31, durationMs: 150, gain: 0.018, type: 'sawtooth' },
+  ]
 }
 
-function buildGameOverSong() {
-  return createSong(
-    {
-      lead: { name: 'square', pack: 'oscillators' },
-      bass: { name: 'triangle', pack: 'oscillators' },
-    },
-    {
-      lead: ['eighth|E4', 'eighth|C4', 'quarter|A3'],
-      bass: ['quarter|A2', 'quarter|rest', 'quarter|E2'],
-    },
-    150,
-  )
+function buildGameOverCue(): SfxStep[] {
+  return [
+    { frequency: 329.63, durationMs: 180, gain: 0.02, type: 'square' },
+    { frequency: 261.63, durationMs: 180, gain: 0.018, type: 'square' },
+    { frequency: 220, durationMs: 280, gain: 0.016, type: 'triangle' },
+    { durationMs: 60 },
+    { frequency: 110, durationMs: 260, gain: 0.012, type: 'triangle' },
+  ]
 }
 
-function buildResetSong() {
-  return createSong(
-    {
-      lead: { name: 'square', pack: 'oscillators' },
-      sparkle: { name: 'triangle', pack: 'oscillators' },
-    },
-    {
-      lead: ['sixteenth|C4', 'sixteenth|E4', 'sixteenth|G4'],
-      sparkle: ['eighth|C5'],
-    },
-    260,
-  )
+function buildResetCue(): SfxStep[] {
+  return [
+    { frequency: 261.63, durationMs: 75, gain: 0.022, type: 'square' },
+    { frequency: 329.63, durationMs: 75, gain: 0.022, type: 'square' },
+    { frequency: 392, durationMs: 90, gain: 0.022, type: 'square' },
+    { frequency: 523.25, durationMs: 150, gain: 0.014, type: 'triangle' },
+  ]
 }
 
 function repeatPattern(pattern: string[], repeats: number) {
   return Array.from({ length: repeats }, () => pattern).flat()
 }
 
-function buildArcadeBgmSong() {
-  const leadPhraseA = [
-    'eighth|G5',
-    'eighth|B5',
-    'eighth|D6',
-    'eighth|B5',
-    'eighth|A5',
-    'eighth|G5',
-    'eighth|E5',
-    'eighth|rest',
-  ]
-  const leadPhraseB = [
-    'eighth|D5',
-    'eighth|G5',
-    'eighth|A5',
-    'eighth|B5',
-    'eighth|D6',
-    'eighth|B5',
-    'eighth|A5',
-    'eighth|G5',
-  ]
-  const leadPhraseC = [
-    'eighth|E5',
-    'eighth|G5',
-    'eighth|B5',
-    'eighth|A5',
-    'eighth|G5',
-    'eighth|D5',
-    'eighth|E5',
-    'eighth|rest',
-  ]
-  const leadPhraseD = [
-    'eighth|G5',
-    'eighth|B5',
-    'eighth|D6',
-    'eighth|E6',
-    'eighth|D6',
-    'eighth|B5',
-    'eighth|G5',
-    'eighth|rest',
-  ]
+function buildTetrisBgmSong() {
+  const lead = repeatPattern(
+    [
+      'eighth|A5',
+      'eighth|E5',
+      'eighth|G5',
+      'eighth|A5',
+      'eighth|C6',
+      'eighth|B5',
+      'eighth|A5',
+      'eighth|G5',
+      'eighth|A5',
+      'eighth|C6',
+      'eighth|E6',
+      'eighth|C6',
+      'eighth|B5',
+      'eighth|A5',
+      'eighth|G5',
+      'eighth|E5',
+    ],
+    1,
+  )
+
+  const pad = repeatPattern(
+    [
+      'half|A3, C4, E4',
+      'half|A3, C4, E4',
+      'half|F3, A3, C4',
+      'half|G3, B3, D4',
+    ],
+    2,
+  )
+
+  const bass = repeatPattern(
+    [
+      'half|A2',
+      'half|E2',
+      'half|F2',
+      'half|C2',
+      'half|G2',
+      'half|D2',
+      'half|E2',
+      'half|B1',
+    ],
+    2,
+  )
+
+  const sparkle = repeatPattern(
+    [
+      'quarter|rest',
+      'quarter|white',
+      'quarter|rest',
+      'quarter|white',
+    ],
+    8,
+  )
 
   return createSong(
     {
@@ -251,100 +252,86 @@ function buildArcadeBgmSong() {
       sparkle: { name: 'white', pack: 'noises' },
     },
     {
-      lead: [
-        ...leadPhraseA,
-        ...leadPhraseB,
-        ...leadPhraseC,
-        ...leadPhraseD,
-      ],
-      pad: repeatPattern(
-        [
-          'quarter|G3, B3, D4',
-          'quarter|G3, B3, D4',
-          'quarter|D3, F#3, A3',
-          'quarter|D3, F#3, A3',
-        ],
-        4,
-      ),
-      bass: [
-        'quarter|G2',
-        'quarter|G2',
-        'quarter|D2',
-        'quarter|D2',
-        'quarter|E2',
-        'quarter|E2',
-        'quarter|C2',
-        'quarter|C2',
-        'quarter|G2',
-        'quarter|G2',
-        'quarter|D2',
-        'quarter|D2',
-        'quarter|C2',
-        'quarter|C2',
-        'quarter|D2',
-        'quarter|D2',
-      ],
-      sparkle: repeatPattern(
-        [
-          'sixteenth|rest',
-          'sixteenth|white',
-          'sixteenth|rest',
-          'sixteenth|white',
-        ],
-        16,
-      ),
+      lead,
+      pad,
+      bass,
+      sparkle,
     },
-    176,
+    112,
   )
-}
-
-function estimateCueDuration(song: SongJSON) {
-  const rhythmDuration: Record<string, number> = {
-    whole: 1,
-    dottedHalf: 0.75,
-    half: 0.5,
-    dottedQuarter: 0.375,
-    tripletHalf: 1 / 3,
-    quarter: 0.25,
-    dottedEighth: 0.1875,
-    tripletQuarter: 1 / 6,
-    eighth: 0.125,
-    dottedSixteenth: 0.09375,
-    tripletEighth: 1 / 12,
-    sixteenth: 0.0625,
-    tripletSixteenth: 1 / 24,
-    thirtySecond: 0.03125,
-  }
-
-  const beatSeconds = 60 / (song.tempo ?? 240)
-  const longestTrack = Object.values(song.notes).reduce((max, track) => {
-    const trackDuration = track.reduce((sum, note) => {
-      const rhythm =
-        typeof note === 'string'
-          ? note.split('|', 1)[0]
-          : note.rhythm
-
-      return sum + (rhythmDuration[rhythm] ?? 0.125) * 4
-    }, 0)
-
-    return Math.max(max, trackDuration)
-  }, 0)
-
-  return Math.max(300, longestTrack * beatSeconds * 1000 + 120)
 }
 
 export function createSfxController(): SfxController {
   let hasUnlocked = false
   let musicEnabled = true
-  const activeCues = new Set<CueHandle>()
   let bgmHandle: BgmHandle | null = null
   let bgmToken = 0
+  let sfxContext: AudioContextLike | null = null
 
-  const destroyBgmHandle = (handle: BgmHandle) => {
-    if (handle.loopTimerId !== null && typeof window !== 'undefined') {
-      window.clearTimeout(handle.loopTimerId)
+  const getSfxContext = () => {
+    if (sfxContext) {
+      return sfxContext
     }
 
+    const AudioContextCtor = getAudioContextConstructor()
+
+    if (!AudioContextCtor) {
+      return null
+    }
+
+    sfxContext = new AudioContextCtor() as unknown as AudioContextLike
+    return sfxContext
+  }
+
+  const playCue = (steps: SfxStep[]) => {
+    const rawContext = getSfxContext()
+
+    if (
+      !rawContext ||
+      rawContext.currentTime === undefined ||
+      !rawContext.createGain ||
+      !rawContext.createOscillator ||
+      !rawContext.destination
+    ) {
+      return
+    }
+
+    const context = rawContext as SfxAudioContext
+    let cursor = context.currentTime + 0.01
+
+    steps.forEach((step) => {
+      const durationSeconds = step.durationMs / 1000
+
+      if (!step.frequency) {
+        cursor += durationSeconds
+        return
+      }
+
+      const gainNode = context.createGain()
+      const oscillator = context.createOscillator()
+      const attackTime = Math.min(0.012, durationSeconds / 3)
+      const releaseStart = Math.max(cursor + attackTime, cursor + durationSeconds - 0.045)
+      const peakGain = step.gain ?? 0.025
+
+      oscillator.type = step.type ?? 'square'
+      oscillator.frequency.setValueAtTime(step.frequency, cursor)
+      gainNode.gain.setValueAtTime(0.0001, cursor)
+      gainNode.gain.exponentialRampToValueAtTime(peakGain, cursor + attackTime)
+      gainNode.gain.setValueAtTime(peakGain, releaseStart)
+      gainNode.gain.exponentialRampToValueAtTime(
+        0.0001,
+        cursor + durationSeconds,
+      )
+
+      oscillator.connect(gainNode)
+      gainNode.connect(context.destination)
+      oscillator.start(cursor)
+      oscillator.stop(cursor + durationSeconds + 0.02)
+      cursor += durationSeconds
+    })
+  }
+
+  const destroyBgmHandle = (handle: BgmHandle) => {
     try {
       handle.player.stop(false)
     } catch {
@@ -357,7 +344,7 @@ export function createSfxController(): SfxController {
       // Ignore cleanup failures from already-finished audio graphs.
     }
 
-    closeContext(handle.conductor.audioContext as AudioContextLike)
+    closeContext(handle.conductor.audioContext as unknown as AudioContextLike)
   }
 
   const stopBgm = () => {
@@ -373,66 +360,29 @@ export function createSfxController(): SfxController {
     destroyBgmHandle(handle)
   }
 
-  const scheduleBgmReplay = (handle: BgmHandle, token: number) => {
-    if (typeof window === 'undefined') {
-      return
-    }
-
-    if (handle.loopTimerId !== null) {
-      window.clearTimeout(handle.loopTimerId)
-    }
-
-    handle.loopTimerId = window.setTimeout(() => {
-      if (token !== bgmToken || !musicEnabled || bgmHandle !== handle) {
-        return
-      }
-
-      replayBgm(handle, token)
-    }, handle.loopDurationMs)
-  }
-
-  const replayBgm = (handle: BgmHandle, token: number) => {
-    if (token !== bgmToken || !musicEnabled || bgmHandle !== handle) {
-      return
-    }
-
-    try {
-      handle.player.stop(false)
-      handle.player.setTime?.(0)
-      handle.player.play()
-      scheduleBgmReplay(handle, token)
-    } catch {
-      bgmHandle = null
-      destroyBgmHandle(handle)
-      startBgm()
-    }
-  }
-
   const startBgm = () => {
     if (!hasUnlocked || !musicEnabled || bgmHandle || typeof window === 'undefined') {
       return
     }
 
     const token = ++bgmToken
-    const song = buildArcadeBgmSong()
+    const song = buildTetrisBgmSong()
     const conductor = new Conductor()
-    conductor.setMasterVolume(0.03)
-    conductor.setNoteBufferLength(32)
-
+    conductor.setMasterVolume(0.028)
+    conductor.setNoteBufferLength(24)
     const player = conductor.load(song) as LoopPlayer
+    player.loop?.(true)
 
     const handle = {
       conductor,
-      loopDurationMs: estimateCueDuration(song),
-      loopTimerId: null,
       player,
     }
 
     bgmHandle = handle
 
-    void resumeContext(conductor.audioContext as AudioContextLike).then(() => {
+    void resumeContext(conductor.audioContext as unknown as AudioContextLike).then(() => {
       if (token !== bgmToken || bgmHandle !== handle || !musicEnabled) {
-        closeContext(conductor.audioContext as AudioContextLike)
+        closeContext(conductor.audioContext as unknown as AudioContextLike)
         if (bgmHandle === handle) {
           bgmHandle = null
         }
@@ -441,7 +391,6 @@ export function createSfxController(): SfxController {
 
       try {
         player.play()
-        scheduleBgmReplay(handle, token)
       } catch {
         stopBgm()
       }
@@ -457,106 +406,47 @@ export function createSfxController(): SfxController {
     stopBgm()
   }
 
-  const playSong = (song: SongJSON, volume: number) => {
-    if (typeof window === 'undefined') {
-      return
-    }
-
-    const conductor = new Conductor()
-    conductor.setMasterVolume(volume)
-    conductor.setNoteBufferLength(6)
-
-    let timeoutId: number | null = null
-    let cleanedUp = false
-
-    const cleanup = () => {
-      if (cleanedUp) {
-        return
-      }
-
-      cleanedUp = true
-      activeCues.delete(handle)
-
-      if (timeoutId !== null) {
-        window.clearTimeout(timeoutId)
-      }
-
-      closeContext(conductor.audioContext as AudioContextLike)
-    }
-
-    const handle: CueHandle = {
-      conductor,
-      cleanup,
-    }
-
-    activeCues.add(handle)
-    conductor.setOnFinishedCallback(cleanup)
-
-    const player = conductor.load(song)
-    const startPlayback = () => {
-      try {
-        player.play()
-      } catch {
-        cleanup()
-      }
-    }
-
-    timeoutId = window.setTimeout(cleanup, estimateCueDuration(song))
-
-    if (hasUnlocked) {
-      void resumeContext(conductor.audioContext as AudioContextLike).then(startPlayback)
-      return
-    }
-
-    startPlayback()
-  }
-
   return {
     unlock() {
       if (!hasUnlocked) {
         hasUnlocked = true
+        void resumeContext(getSfxContext() ?? undefined)
         syncBgm()
       } else if (bgmHandle) {
-        void resumeContext(bgmHandle.conductor.audioContext as AudioContextLike)
+        void resumeContext(bgmHandle.conductor.audioContext as unknown as AudioContextLike)
       }
 
-      activeCues.forEach(({ conductor }) => {
-        void resumeContext(conductor.audioContext as AudioContextLike)
-      })
+      void resumeContext(sfxContext ?? undefined)
     },
     setMusicEnabled(enabled) {
       musicEnabled = enabled
       syncBgm()
     },
     select() {
-      playSong(buildSelectSong(), 0.14)
+      playCue(buildSelectCue())
     },
     rotate() {
-      playSong(buildRotateSong(), 0.16)
+      playCue(buildRotateCue())
     },
     place(mass = 3) {
-      playSong(buildPlaceSong(mass), 0.18)
+      playCue(buildPlaceCue(mass))
     },
     clear(lines = 1) {
-      playSong(buildClearSong(lines), 0.2)
+      playCue(buildClearCue(lines))
     },
     error() {
-      playSong(buildErrorSong(), 0.1)
+      playCue(buildErrorCue())
     },
     gameOver() {
-      playSong(buildGameOverSong(), 0.12)
+      playCue(buildGameOverCue())
     },
     reset() {
-      playSong(buildResetSong(), 0.16)
+      playCue(buildResetCue())
     },
     dispose() {
       stopBgm()
-
-      activeCues.forEach(({ cleanup }) => {
-        cleanup()
-      })
-
-      activeCues.clear()
+      closeContext(sfxContext ?? undefined)
+      sfxContext = null
     },
   }
 }
