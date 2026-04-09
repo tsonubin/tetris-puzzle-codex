@@ -1,42 +1,11 @@
-import Conductor from '@meenie/band.js'
-
-type SongNote =
-  | string
-  | {
-      type: 'note' | 'rest'
-      rhythm: string
-      pitch?: string | string[]
-      tie?: boolean
-    }
-
-type SongJSON = {
-  instruments: Record<
-    string,
-    {
-      name: string
-      pack: 'oscillators' | 'noises'
-    }
-  >
-  notes: Record<string, SongNote[]>
-  tempo?: number
-  timeSignature?: [number, number]
-}
-
 type AudioContextLike = {
-  currentTime?: number
   close?: () => Promise<void>
+  currentTime?: number
   createGain?: () => GainNode
   createOscillator?: () => OscillatorNode
   destination?: AudioDestinationNode
   resume?: () => Promise<void>
   state?: string
-}
-
-type SfxStep = {
-  durationMs: number
-  frequency?: number
-  gain?: number
-  type?: OscillatorType
 }
 
 type SfxAudioContext = AudioContextLike & {
@@ -46,15 +15,32 @@ type SfxAudioContext = AudioContextLike & {
   destination: AudioDestinationNode
 }
 
-type LoopPlayer = {
-  play: () => void
-  loop?: (enabled: boolean) => void
-  stop: (fadeOut?: boolean) => void
+type SfxStep = {
+  durationMs: number
+  frequency?: number
+  gain?: number
+  type?: OscillatorType
+}
+
+type BgmEvent = {
+  gain: number
+  length: number
+  notes: number[]
+  type: OscillatorType
+}
+
+type BgmStep = {
+  bass?: BgmEvent
+  lead?: BgmEvent
+  pad?: BgmEvent
+  sparkle?: BgmEvent
 }
 
 type BgmHandle = {
-  conductor: Conductor
-  player: LoopPlayer
+  context: SfxAudioContext
+  nextStepTime: number
+  stepIndex: number
+  timerId: number | null
 }
 
 export type SfxController = {
@@ -70,20 +56,76 @@ export type SfxController = {
   dispose: () => void
 }
 
-function createSong(
-  instruments: SongJSON['instruments'],
-  notes: SongJSON['notes'],
-  tempo = 240,
-): SongJSON {
-  return {
-    instruments,
-    notes,
-    tempo,
-    timeSignature: [4, 4],
-  }
+const BGM_TEMPO = 84
+const BGM_STEP_DURATION = 60 / BGM_TEMPO / 2
+const BGM_LOOKAHEAD_SECONDS = 0.22
+const BGM_LOOKAHEAD_MS = 50
+
+const BGM_PATTERN: BgmStep[] = Array.from({ length: 32 }, () => ({}))
+
+BGM_PATTERN[0] = {
+  bass: { notes: [110], length: 4, gain: 0.015, type: 'triangle' },
+  pad: { notes: [220, 261.63, 329.63], length: 8, gain: 0.022, type: 'sine' },
+  lead: { notes: [659.25], length: 2, gain: 0.018, type: 'square' },
+}
+BGM_PATTERN[2] = {
+  lead: { notes: [783.99], length: 2, gain: 0.018, type: 'square' },
+}
+BGM_PATTERN[4] = {
+  bass: { notes: [82.41], length: 4, gain: 0.014, type: 'triangle' },
+  lead: { notes: [880], length: 4, gain: 0.017, type: 'square' },
+}
+BGM_PATTERN[6] = {
+  sparkle: { notes: [1318.51], length: 1, gain: 0.008, type: 'square' },
 }
 
-function closeContext(context: AudioContextLike | undefined) {
+BGM_PATTERN[8] = {
+  bass: { notes: [87.31], length: 4, gain: 0.015, type: 'triangle' },
+  pad: { notes: [174.61, 220, 261.63], length: 8, gain: 0.02, type: 'sine' },
+  lead: { notes: [783.99], length: 2, gain: 0.017, type: 'square' },
+}
+BGM_PATTERN[10] = {
+  lead: { notes: [659.25], length: 2, gain: 0.017, type: 'square' },
+}
+BGM_PATTERN[12] = {
+  bass: { notes: [65.41], length: 4, gain: 0.014, type: 'triangle' },
+  lead: { notes: [587.33], length: 4, gain: 0.016, type: 'square' },
+}
+BGM_PATTERN[14] = {
+  sparkle: { notes: [1174.66], length: 1, gain: 0.007, type: 'square' },
+}
+
+BGM_PATTERN[16] = {
+  bass: { notes: [65.41], length: 4, gain: 0.014, type: 'triangle' },
+  pad: { notes: [130.81, 164.81, 196], length: 8, gain: 0.02, type: 'sine' },
+  lead: { notes: [659.25], length: 2, gain: 0.018, type: 'square' },
+}
+BGM_PATTERN[18] = {
+  lead: { notes: [783.99], length: 2, gain: 0.018, type: 'square' },
+}
+BGM_PATTERN[20] = {
+  bass: { notes: [98], length: 4, gain: 0.014, type: 'triangle' },
+  lead: { notes: [987.77], length: 2, gain: 0.017, type: 'square' },
+}
+BGM_PATTERN[22] = {
+  lead: { notes: [880], length: 2, gain: 0.017, type: 'square' },
+  sparkle: { notes: [1567.98], length: 1, gain: 0.008, type: 'square' },
+}
+
+BGM_PATTERN[24] = {
+  bass: { notes: [73.42], length: 4, gain: 0.014, type: 'triangle' },
+  pad: { notes: [196, 246.94, 293.66], length: 8, gain: 0.02, type: 'sine' },
+  lead: { notes: [783.99], length: 4, gain: 0.017, type: 'square' },
+}
+BGM_PATTERN[28] = {
+  bass: { notes: [82.41], length: 4, gain: 0.014, type: 'triangle' },
+  lead: { notes: [659.25], length: 4, gain: 0.016, type: 'square' },
+}
+BGM_PATTERN[30] = {
+  sparkle: { notes: [1318.51], length: 1, gain: 0.007, type: 'square' },
+}
+
+function closeContext(context: AudioContextLike | null | undefined) {
   if (!context?.close) {
     return
   }
@@ -91,7 +133,7 @@ function closeContext(context: AudioContextLike | undefined) {
   void context.close().catch(() => {})
 }
 
-function resumeContext(context: AudioContextLike | undefined) {
+function resumeContext(context: AudioContextLike | null | undefined) {
   if (context?.state !== 'suspended' || !context.resume) {
     return Promise.resolve()
   }
@@ -108,6 +150,16 @@ function getAudioContextConstructor() {
     (window as Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext })
       .webkitAudioContext ??
     null
+}
+
+function createContext(): SfxAudioContext | null {
+  const AudioContextCtor = getAudioContextConstructor()
+
+  if (!AudioContextCtor) {
+    return null
+  }
+
+  return new AudioContextCtor() as unknown as SfxAudioContext
 }
 
 function buildSelectCue(): SfxStep[] {
@@ -183,181 +235,137 @@ function buildResetCue(): SfxStep[] {
   ]
 }
 
-function repeatPattern(pattern: string[], repeats: number) {
-  return Array.from({ length: repeats }, () => pattern).flat()
+function scheduleNote(
+  context: SfxAudioContext,
+  frequency: number,
+  startTime: number,
+  durationSeconds: number,
+  type: OscillatorType,
+  gain: number,
+) {
+  const oscillator = context.createOscillator()
+  const gainNode = context.createGain()
+  const attackTime = Math.min(0.02, durationSeconds / 3)
+  const releaseTime = Math.min(0.08, durationSeconds / 2)
+  const releaseStart = Math.max(
+    startTime + attackTime,
+    startTime + durationSeconds - releaseTime,
+  )
+
+  oscillator.type = type
+  oscillator.frequency.setValueAtTime(frequency, startTime)
+  gainNode.gain.setValueAtTime(0.0001, startTime)
+  gainNode.gain.exponentialRampToValueAtTime(gain, startTime + attackTime)
+  gainNode.gain.setValueAtTime(gain, releaseStart)
+  gainNode.gain.exponentialRampToValueAtTime(
+    0.0001,
+    startTime + durationSeconds,
+  )
+
+  oscillator.connect(gainNode)
+  gainNode.connect(context.destination)
+  oscillator.start(startTime)
+  oscillator.stop(startTime + durationSeconds + 0.04)
 }
 
-function buildTetrisBgmSong() {
-  const lead = repeatPattern(
-    [
-      'eighth|A5',
-      'eighth|E5',
-      'eighth|G5',
-      'eighth|A5',
-      'eighth|C6',
-      'eighth|B5',
-      'eighth|A5',
-      'eighth|G5',
-      'eighth|A5',
-      'eighth|C6',
-      'eighth|E6',
-      'eighth|C6',
-      'eighth|B5',
-      'eighth|A5',
-      'eighth|G5',
-      'eighth|E5',
-    ],
-    1,
-  )
+function scheduleCue(context: SfxAudioContext, steps: SfxStep[]) {
+  let cursor = context.currentTime + 0.01
 
-  const pad = repeatPattern(
-    [
-      'half|A3, C4, E4',
-      'half|A3, C4, E4',
-      'half|F3, A3, C4',
-      'half|G3, B3, D4',
-    ],
-    2,
-  )
+  steps.forEach((step) => {
+    const durationSeconds = step.durationMs / 1000
 
-  const bass = repeatPattern(
-    [
-      'half|A2',
-      'half|E2',
-      'half|F2',
-      'half|C2',
-      'half|G2',
-      'half|D2',
-      'half|E2',
-      'half|B1',
-    ],
-    2,
-  )
+    if (step.frequency) {
+      scheduleNote(
+        context,
+        step.frequency,
+        cursor,
+        durationSeconds,
+        step.type ?? 'square',
+        step.gain ?? 0.025,
+      )
+    }
 
-  const sparkle = repeatPattern(
-    [
-      'quarter|rest',
-      'quarter|white',
-      'quarter|rest',
-      'quarter|white',
-    ],
-    8,
-  )
+    cursor += durationSeconds
+  })
+}
 
-  return createSong(
-    {
-      lead: { name: 'square', pack: 'oscillators' },
-      pad: { name: 'triangle', pack: 'oscillators' },
-      bass: { name: 'triangle', pack: 'oscillators' },
-      sparkle: { name: 'white', pack: 'noises' },
-    },
-    {
-      lead,
-      pad,
-      bass,
-      sparkle,
-    },
-    112,
-  )
+function scheduleBgmEvent(
+  context: SfxAudioContext,
+  startTime: number,
+  event: BgmEvent | undefined,
+) {
+  if (!event) {
+    return
+  }
+
+  const durationSeconds = event.length * BGM_STEP_DURATION
+  const perNoteGain = event.gain / Math.max(1, Math.sqrt(event.notes.length))
+
+  event.notes.forEach((note) => {
+    scheduleNote(
+      context,
+      note,
+      startTime,
+      durationSeconds,
+      event.type,
+      perNoteGain,
+    )
+  })
+}
+
+function scheduleBgm(handle: BgmHandle) {
+  while (
+    handle.nextStepTime <
+    handle.context.currentTime + BGM_LOOKAHEAD_SECONDS
+  ) {
+    const step = BGM_PATTERN[handle.stepIndex]
+
+    scheduleBgmEvent(handle.context, handle.nextStepTime, step.pad)
+    scheduleBgmEvent(handle.context, handle.nextStepTime, step.bass)
+    scheduleBgmEvent(handle.context, handle.nextStepTime, step.lead)
+    scheduleBgmEvent(handle.context, handle.nextStepTime, step.sparkle)
+
+    handle.nextStepTime += BGM_STEP_DURATION
+    handle.stepIndex = (handle.stepIndex + 1) % BGM_PATTERN.length
+  }
 }
 
 export function createSfxController(): SfxController {
   let hasUnlocked = false
   let musicEnabled = true
   let bgmHandle: BgmHandle | null = null
-  let bgmToken = 0
-  let sfxContext: AudioContextLike | null = null
+  let sfxContext: SfxAudioContext | null = null
 
   const getSfxContext = () => {
     if (sfxContext) {
       return sfxContext
     }
 
-    const AudioContextCtor = getAudioContextConstructor()
-
-    if (!AudioContextCtor) {
-      return null
-    }
-
-    sfxContext = new AudioContextCtor() as unknown as AudioContextLike
+    sfxContext = createContext()
     return sfxContext
   }
 
-  const playCue = (steps: SfxStep[]) => {
-    const rawContext = getSfxContext()
+  const playSfx = (steps: SfxStep[]) => {
+    const context = getSfxContext()
 
-    if (
-      !rawContext ||
-      rawContext.currentTime === undefined ||
-      !rawContext.createGain ||
-      !rawContext.createOscillator ||
-      !rawContext.destination
-    ) {
+    if (!context) {
       return
     }
 
-    const context = rawContext as SfxAudioContext
-    let cursor = context.currentTime + 0.01
-
-    steps.forEach((step) => {
-      const durationSeconds = step.durationMs / 1000
-
-      if (!step.frequency) {
-        cursor += durationSeconds
-        return
-      }
-
-      const gainNode = context.createGain()
-      const oscillator = context.createOscillator()
-      const attackTime = Math.min(0.012, durationSeconds / 3)
-      const releaseStart = Math.max(cursor + attackTime, cursor + durationSeconds - 0.045)
-      const peakGain = step.gain ?? 0.025
-
-      oscillator.type = step.type ?? 'square'
-      oscillator.frequency.setValueAtTime(step.frequency, cursor)
-      gainNode.gain.setValueAtTime(0.0001, cursor)
-      gainNode.gain.exponentialRampToValueAtTime(peakGain, cursor + attackTime)
-      gainNode.gain.setValueAtTime(peakGain, releaseStart)
-      gainNode.gain.exponentialRampToValueAtTime(
-        0.0001,
-        cursor + durationSeconds,
-      )
-
-      oscillator.connect(gainNode)
-      gainNode.connect(context.destination)
-      oscillator.start(cursor)
-      oscillator.stop(cursor + durationSeconds + 0.02)
-      cursor += durationSeconds
-    })
-  }
-
-  const destroyBgmHandle = (handle: BgmHandle) => {
-    try {
-      handle.player.stop(false)
-    } catch {
-      // Ignore stale player errors during shutdown.
-    }
-
-    try {
-      handle.conductor.destroy()
-    } catch {
-      // Ignore cleanup failures from already-finished audio graphs.
-    }
-
-    closeContext(handle.conductor.audioContext as unknown as AudioContextLike)
+    scheduleCue(context, steps)
   }
 
   const stopBgm = () => {
-    bgmToken += 1
-
     if (!bgmHandle) {
       return
     }
 
-    const handle = bgmHandle
-    bgmHandle = null
+    if (bgmHandle.timerId !== null && typeof window !== 'undefined') {
+      window.clearInterval(bgmHandle.timerId)
+    }
 
-    destroyBgmHandle(handle)
+    closeContext(bgmHandle.context)
+    bgmHandle = null
   }
 
   const startBgm = () => {
@@ -365,35 +373,38 @@ export function createSfxController(): SfxController {
       return
     }
 
-    const token = ++bgmToken
-    const song = buildTetrisBgmSong()
-    const conductor = new Conductor()
-    conductor.setMasterVolume(0.028)
-    conductor.setNoteBufferLength(24)
-    const player = conductor.load(song) as LoopPlayer
-    player.loop?.(true)
+    const context = createContext()
 
-    const handle = {
-      conductor,
-      player,
+    if (!context) {
+      return
+    }
+
+    const handle: BgmHandle = {
+      context,
+      nextStepTime: context.currentTime + 0.05,
+      stepIndex: 0,
+      timerId: null,
     }
 
     bgmHandle = handle
 
-    void resumeContext(conductor.audioContext as unknown as AudioContextLike).then(() => {
-      if (token !== bgmToken || bgmHandle !== handle || !musicEnabled) {
-        closeContext(conductor.audioContext as unknown as AudioContextLike)
+    void resumeContext(context).then(() => {
+      if (bgmHandle !== handle || !musicEnabled) {
+        closeContext(context)
         if (bgmHandle === handle) {
           bgmHandle = null
         }
         return
       }
 
-      try {
-        player.play()
-      } catch {
-        stopBgm()
-      }
+      scheduleBgm(handle)
+      handle.timerId = window.setInterval(() => {
+        if (bgmHandle !== handle) {
+          return
+        }
+
+        scheduleBgm(handle)
+      }, BGM_LOOKAHEAD_MS)
     })
   }
 
@@ -410,42 +421,41 @@ export function createSfxController(): SfxController {
     unlock() {
       if (!hasUnlocked) {
         hasUnlocked = true
-        void resumeContext(getSfxContext() ?? undefined)
+        void resumeContext(getSfxContext())
         syncBgm()
-      } else if (bgmHandle) {
-        void resumeContext(bgmHandle.conductor.audioContext as unknown as AudioContextLike)
+      } else {
+        void resumeContext(sfxContext)
+        void resumeContext(bgmHandle?.context)
       }
-
-      void resumeContext(sfxContext ?? undefined)
     },
     setMusicEnabled(enabled) {
       musicEnabled = enabled
       syncBgm()
     },
     select() {
-      playCue(buildSelectCue())
+      playSfx(buildSelectCue())
     },
     rotate() {
-      playCue(buildRotateCue())
+      playSfx(buildRotateCue())
     },
     place(mass = 3) {
-      playCue(buildPlaceCue(mass))
+      playSfx(buildPlaceCue(mass))
     },
     clear(lines = 1) {
-      playCue(buildClearCue(lines))
+      playSfx(buildClearCue(lines))
     },
     error() {
-      playCue(buildErrorCue())
+      playSfx(buildErrorCue())
     },
     gameOver() {
-      playCue(buildGameOverCue())
+      playSfx(buildGameOverCue())
     },
     reset() {
-      playCue(buildResetCue())
+      playSfx(buildResetCue())
     },
     dispose() {
       stopBgm()
-      closeContext(sfxContext ?? undefined)
+      closeContext(sfxContext)
       sfxContext = null
     },
   }
