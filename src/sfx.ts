@@ -56,7 +56,7 @@ export type SfxController = {
   dispose: () => void
 }
 
-const BGM_TEMPO = 84
+const BGM_TEMPO = 132
 const BGM_STEP_DURATION = 60 / BGM_TEMPO / 2
 const BGM_LOOKAHEAD_SECONDS = 0.22
 const BGM_LOOKAHEAD_MS = 50
@@ -64,65 +64,131 @@ const BGM_LOOKAHEAD_MS = 50
 const BGM_PATTERN: BgmStep[] = Array.from({ length: 32 }, () => ({}))
 
 BGM_PATTERN[0] = {
-  bass: { notes: [110], length: 4, gain: 0.015, type: 'triangle' },
-  pad: { notes: [220, 261.63, 329.63], length: 8, gain: 0.022, type: 'sine' },
-  lead: { notes: [659.25], length: 2, gain: 0.018, type: 'square' },
+  bass: { notes: [110], length: 2, gain: 0.012, type: 'triangle' },
+  pad: { notes: [220, 261.63, 329.63], length: 4, gain: 0.014, type: 'triangle' },
+  lead: { notes: [659.25], length: 1, gain: 0.017, type: 'square' },
+}
+BGM_PATTERN[1] = {
+  lead: { notes: [493.88], length: 1, gain: 0.016, type: 'square' },
 }
 BGM_PATTERN[2] = {
-  lead: { notes: [783.99], length: 2, gain: 0.018, type: 'square' },
+  bass: { notes: [164.81], length: 2, gain: 0.01, type: 'triangle' },
+  lead: { notes: [523.25], length: 1, gain: 0.016, type: 'square' },
+}
+BGM_PATTERN[3] = {
+  lead: { notes: [587.33], length: 1, gain: 0.016, type: 'square' },
 }
 BGM_PATTERN[4] = {
-  bass: { notes: [82.41], length: 4, gain: 0.014, type: 'triangle' },
-  lead: { notes: [880], length: 4, gain: 0.017, type: 'square' },
+  bass: { notes: [87.31], length: 2, gain: 0.012, type: 'triangle' },
+  pad: { notes: [174.61, 220, 261.63], length: 4, gain: 0.013, type: 'triangle' },
+  lead: { notes: [659.25], length: 1, gain: 0.017, type: 'square' },
+}
+BGM_PATTERN[5] = {
+  lead: { notes: [523.25], length: 1, gain: 0.016, type: 'square' },
 }
 BGM_PATTERN[6] = {
-  sparkle: { notes: [1318.51], length: 1, gain: 0.008, type: 'square' },
+  bass: { notes: [130.81], length: 2, gain: 0.01, type: 'triangle' },
+  lead: { notes: [493.88], length: 1, gain: 0.016, type: 'square' },
+}
+BGM_PATTERN[7] = {
+  lead: { notes: [440], length: 1, gain: 0.015, type: 'square' },
+  sparkle: { notes: [1318.51], length: 1, gain: 0.004, type: 'square' },
 }
 
 BGM_PATTERN[8] = {
-  bass: { notes: [87.31], length: 4, gain: 0.015, type: 'triangle' },
-  pad: { notes: [174.61, 220, 261.63], length: 8, gain: 0.02, type: 'sine' },
-  lead: { notes: [783.99], length: 2, gain: 0.017, type: 'square' },
+  bass: { notes: [98], length: 2, gain: 0.012, type: 'triangle' },
+  pad: { notes: [196, 246.94, 293.66], length: 4, gain: 0.014, type: 'triangle' },
+  lead: { notes: [523.25], length: 1, gain: 0.016, type: 'square' },
+}
+BGM_PATTERN[9] = {
+  lead: { notes: [659.25], length: 1, gain: 0.017, type: 'square' },
 }
 BGM_PATTERN[10] = {
-  lead: { notes: [659.25], length: 2, gain: 0.017, type: 'square' },
+  bass: { notes: [146.83], length: 2, gain: 0.01, type: 'triangle' },
+  lead: { notes: [783.99], length: 1, gain: 0.017, type: 'square' },
+}
+BGM_PATTERN[11] = {
+  lead: { notes: [659.25], length: 1, gain: 0.016, type: 'square' },
 }
 BGM_PATTERN[12] = {
-  bass: { notes: [65.41], length: 4, gain: 0.014, type: 'triangle' },
-  lead: { notes: [587.33], length: 4, gain: 0.016, type: 'square' },
+  bass: { notes: [82.41], length: 2, gain: 0.012, type: 'triangle' },
+  pad: { notes: [164.81, 220, 261.63], length: 4, gain: 0.013, type: 'triangle' },
+  lead: { notes: [523.25], length: 1, gain: 0.016, type: 'square' },
+}
+BGM_PATTERN[13] = {
+  lead: { notes: [493.88], length: 1, gain: 0.015, type: 'square' },
 }
 BGM_PATTERN[14] = {
-  sparkle: { notes: [1174.66], length: 1, gain: 0.007, type: 'square' },
+  bass: { notes: [123.47], length: 2, gain: 0.01, type: 'triangle' },
+  lead: { notes: [440], length: 1, gain: 0.015, type: 'square' },
+}
+BGM_PATTERN[15] = {
+  lead: { notes: [493.88], length: 1, gain: 0.015, type: 'square' },
+  sparkle: { notes: [1174.66], length: 1, gain: 0.004, type: 'square' },
 }
 
 BGM_PATTERN[16] = {
-  bass: { notes: [65.41], length: 4, gain: 0.014, type: 'triangle' },
-  pad: { notes: [130.81, 164.81, 196], length: 8, gain: 0.02, type: 'sine' },
-  lead: { notes: [659.25], length: 2, gain: 0.018, type: 'square' },
+  bass: { notes: [110], length: 2, gain: 0.012, type: 'triangle' },
+  pad: { notes: [220, 261.63, 329.63], length: 4, gain: 0.014, type: 'triangle' },
+  lead: { notes: [880], length: 1, gain: 0.017, type: 'square' },
+}
+BGM_PATTERN[17] = {
+  lead: { notes: [783.99], length: 1, gain: 0.016, type: 'square' },
 }
 BGM_PATTERN[18] = {
-  lead: { notes: [783.99], length: 2, gain: 0.018, type: 'square' },
+  bass: { notes: [164.81], length: 2, gain: 0.01, type: 'triangle' },
+  lead: { notes: [659.25], length: 1, gain: 0.016, type: 'square' },
+}
+BGM_PATTERN[19] = {
+  lead: { notes: [523.25], length: 1, gain: 0.016, type: 'square' },
 }
 BGM_PATTERN[20] = {
-  bass: { notes: [98], length: 4, gain: 0.014, type: 'triangle' },
-  lead: { notes: [987.77], length: 2, gain: 0.017, type: 'square' },
+  bass: { notes: [87.31], length: 2, gain: 0.012, type: 'triangle' },
+  pad: { notes: [174.61, 220, 261.63], length: 4, gain: 0.013, type: 'triangle' },
+  lead: { notes: [659.25], length: 1, gain: 0.016, type: 'square' },
+}
+BGM_PATTERN[21] = {
+  lead: { notes: [783.99], length: 1, gain: 0.016, type: 'square' },
 }
 BGM_PATTERN[22] = {
-  lead: { notes: [880], length: 2, gain: 0.017, type: 'square' },
-  sparkle: { notes: [1567.98], length: 1, gain: 0.008, type: 'square' },
+  bass: { notes: [130.81], length: 2, gain: 0.01, type: 'triangle' },
+  lead: { notes: [987.77], length: 1, gain: 0.017, type: 'square' },
+}
+BGM_PATTERN[23] = {
+  lead: { notes: [880], length: 1, gain: 0.016, type: 'square' },
+  sparkle: { notes: [1567.98], length: 1, gain: 0.004, type: 'square' },
 }
 
 BGM_PATTERN[24] = {
-  bass: { notes: [73.42], length: 4, gain: 0.014, type: 'triangle' },
-  pad: { notes: [196, 246.94, 293.66], length: 8, gain: 0.02, type: 'sine' },
-  lead: { notes: [783.99], length: 4, gain: 0.017, type: 'square' },
+  bass: { notes: [98], length: 2, gain: 0.012, type: 'triangle' },
+  pad: { notes: [196, 246.94, 293.66], length: 4, gain: 0.014, type: 'triangle' },
+  lead: { notes: [1046.5], length: 1, gain: 0.017, type: 'square' },
+}
+BGM_PATTERN[25] = {
+  lead: { notes: [987.77], length: 1, gain: 0.016, type: 'square' },
+}
+BGM_PATTERN[26] = {
+  bass: { notes: [146.83], length: 2, gain: 0.01, type: 'triangle' },
+  lead: { notes: [880], length: 1, gain: 0.016, type: 'square' },
+}
+BGM_PATTERN[27] = {
+  lead: { notes: [783.99], length: 1, gain: 0.016, type: 'square' },
 }
 BGM_PATTERN[28] = {
-  bass: { notes: [82.41], length: 4, gain: 0.014, type: 'triangle' },
-  lead: { notes: [659.25], length: 4, gain: 0.016, type: 'square' },
+  bass: { notes: [82.41], length: 2, gain: 0.012, type: 'triangle' },
+  pad: { notes: [164.81, 220, 261.63], length: 4, gain: 0.013, type: 'triangle' },
+  lead: { notes: [659.25], length: 1, gain: 0.016, type: 'square' },
+}
+BGM_PATTERN[29] = {
+  lead: { notes: [523.25], length: 1, gain: 0.015, type: 'square' },
 }
 BGM_PATTERN[30] = {
-  sparkle: { notes: [1318.51], length: 1, gain: 0.007, type: 'square' },
+  bass: { notes: [123.47], length: 2, gain: 0.01, type: 'triangle' },
+  lead: { notes: [493.88], length: 1, gain: 0.015, type: 'square' },
+}
+BGM_PATTERN[31] = {
+  lead: { notes: [523.25], length: 1, gain: 0.015, type: 'square' },
+  sparkle: { notes: [1318.51], length: 1, gain: 0.004, type: 'square' },
 }
 
 function closeContext(context: AudioContextLike | null | undefined) {
