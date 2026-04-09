@@ -109,6 +109,40 @@
   gap: 12px;
 }
 
+.language-switcher {
+  display: grid;
+  gap: 4px;
+  min-width: 160px;
+}
+
+.language-switcher-label {
+  font-size: 0.58rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(214, 231, 255, 0.64);
+}
+
+.language-switcher select {
+  appearance: none;
+  border: 3px solid var(--gb-ink);
+  border-radius: 6px;
+  background: var(--gb-panel);
+  color: var(--gb-ink);
+  padding: 10px 12px;
+  min-height: 42px;
+  box-shadow:
+    0 5px 0 0 var(--gb-shadow),
+    inset 2px 2px 0 rgba(255, 255, 255, 0.5),
+    inset -3px -3px 0 rgba(56, 79, 31, 0.2);
+  cursor: pointer;
+}
+
+.language-switcher select:hover,
+.language-switcher select:focus-visible {
+  transform: translate(-1px, -1px);
+  outline: none;
+}
+
 .music-toggle {
   appearance: none;
   border: 3px solid var(--gb-ink);
@@ -1046,7 +1080,7 @@
   .mobile-brand {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    flex-wrap: wrap;
     gap: 10px;
   }
 
@@ -1075,6 +1109,16 @@
     min-width: 88px;
     padding: 8px 9px;
     gap: 8px;
+  }
+
+  .mobile-language-switcher {
+    min-width: 128px;
+  }
+
+  .mobile-language-switcher select {
+    padding: 8px 9px;
+    min-height: 34px;
+    font-size: 0.66rem;
   }
 
   .mobile-music-toggle .music-toggle-label {

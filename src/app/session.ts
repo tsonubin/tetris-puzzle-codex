@@ -71,8 +71,8 @@ export function formatPercent(value: number) {
   return `${Math.round(value * 100)}%`
 }
 
-export function formatDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
+export function formatDate(value: string, locale?: string) {
+  return new Intl.DateTimeFormat(locale, {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value))
