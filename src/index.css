@@ -1,0 +1,72 @@
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+:root {
+  font-family:
+    'Press Start 2P', 'Courier New', 'Lucida Console', 'SFMono-Regular', Menlo, Monaco, monospace;
+  line-height: 1.5;
+  font-weight: 400;
+  font-size: 13px;
+  color: #241b3b;
+  background: #4f4b8a;
+  font-synthesis: none;
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: auto;
+  --gb-bg: #24264f;
+  --gb-shell: #d3c2ff;
+  --gb-panel: #f8eebd;
+  --gb-panel-2: #e2d3ff;
+  --gb-screen: #9ae0d8;
+  --gb-screen-2: #69a0d8;
+  --gb-line: #38507b;
+  --gb-dark: #6e53b1;
+  --gb-ink: #241b3b;
+  --gb-shadow: #17122c;
+  --gb-glow: #fff1a8;
+  --gb-danger: #c76970;
+  --gb-success: #74bf66;
+  --gb-accent: #ff9ac2;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scrollbar-gutter: stable;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: #4f4b8a;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+  background-size: 12px 12px;
+  opacity: 0.8;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  letter-spacing: 0.03em;
+}
+
+a {
+  color: inherit;
+}
+
+#root {
+  min-height: 100vh;
+}
