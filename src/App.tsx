@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useEffectEvent,
   useMemo,
   useRef,
   useState,
@@ -9,121 +10,32 @@ import {
 import './App.css'
 import {
   BOARD_SIZE,
-  RACK_SIZE,
   calculateBenchmark,
   canPlacePiece,
   clampPlacementOrigin,
-  createInitialGameState,
   createPreviewCells,
-  findFirstPlayableRackIndex,
   getFillRatio,
   getPlacementResult,
-  hasAnyRackFit,
-  isRackEmpty,
   rotateRackPiece,
   type BestRun,
   type Coordinate,
   type GameState,
-  type RackPiece,
 } from './game'
-
-const STORAGE_KEY = 'grid-forge-best-run-v2'
-
-function readBestRun(): BestRun | null {
-  if (typeof window === 'undefined') {
-    return null
-  }
-
-  try {
-    const value = window.localStorage.getItem(STORAGE_KEY)
-
-    if (!value) {
-      return null
-    }
-
-    return JSON.parse(value) as BestRun
-  } catch {
-    return null
-  }
-}
-
-function saveBestRun(bestRun: BestRun) {
-  if (typeof window === 'undefined') {
-    return
-  }
-
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(bestRun))
-}
-
-function getBenchmarkCopy(state: GameState) {
-  return calculateBenchmark(state)
-}
-
-function formatPercent(value: number) {
-  return `${Math.round(value * 100)}%`
-}
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(value))
-}
-
-function pickNextSelection(rack: Array<RackPiece | null>, board: GameState['board']) {
-  return findFirstPlayableRackIndex(rack, board)
-}
-
-function createBestRun(state: GameState): BestRun {
-  const benchmark = getBenchmarkCopy(state)
-
-  return {
-    benchmarkScore: benchmark.overall,
-    benchmarkRank: benchmark.rank,
-    benchmarkLabel: benchmark.label,
-    score: state.score,
-    linesCleared: state.totalLinesCleared,
-    roundsCompleted: state.roundsCompleted,
-    placements: state.placements,
-    maxCombo: state.maxCombo,
-    playedAt: new Date().toISOString(),
-  }
-}
-
-function renderPieceCells(piece: RackPiece, className = '') {
-  const previewSize = 4
-  const offsetX = Math.floor((previewSize - piece.width) / 2)
-  const offsetY = Math.floor((previewSize - piece.height) / 2)
-  const occupied = new Set(
-    piece.cells.map((cell) => `${cell.x + offsetX}:${cell.y + offsetY}`),
-  )
-
-  return (
-    <div
-      className={`piece-mini-grid ${className}`.trim()}
-      style={
-        {
-          '--piece-columns': previewSize,
-          '--piece-rows': previewSize,
-          '--piece-color': piece.color,
-        } as CSSProperties
-      }
-    >
-      {Array.from({ length: previewSize * previewSize }, (_, index) => {
-        const x = index % previewSize
-        const y = Math.floor(index / previewSize)
-        const key = `${x}:${y}`
-
-        return (
-          <span
-            key={key}
-            className={`piece-mini-cell ${occupied.has(key) ? 'filled' : ''}`}
-          />
-        )
-      })}
-    </div>
-  )
-}
+import {
+  createBestRun,
+  createInitialSession,
+  pickNextSelection,
+  readBestRun,
+  readMusicEnabled,
+  saveBestRun,
+  saveMusicEnabled,
+} from './app/session'
+import { GameBoard } from './components/GameBoard'
+import { MusicToggle } from './components/MusicToggle'
+import { PiecePreview } from './components/PiecePreview'
+import { RackPanel } from './components/RackPanel'
+import { RunPanel } from './components/RunPanel'
+import { createSfxController, type SfxController } from './sfx'
 
 type DragState = {
   rackIndex: number
@@ -150,14 +62,18 @@ type ClearAnimationState = {
 }
 
 function App() {
-  const [game, setGame] = useState<GameState>(() => createInitialGameState())
+  const [initialSession] = useState(createInitialSession)
+  const [game, setGame] = useState<GameState>(() => initialSession.game)
   const [bestRun, setBestRun] = useState<BestRun | null>(() => readBestRun())
+  const [musicEnabled, setMusicEnabled] = useState(() => readMusicEnabled())
   const [isCoarsePointer, setIsCoarsePointer] = useState(() =>
     typeof window !== 'undefined'
       ? window.matchMedia('(pointer: coarse)').matches
       : false,
   )
-  const [selectedRackIndex, setSelectedRackIndex] = useState<number | null>(null)
+  const [selectedRackIndex, setSelectedRackIndex] = useState<number | null>(
+    () => initialSession.selectedRackIndex,
+  )
   const [dragState, setDragState] = useState<DragState | null>(null)
   const [hoveredCell, setHoveredCell] = useState<Coordinate | null>(null)
   const [clearAnimation, setClearAnimation] = useState<ClearAnimationState | null>(null)
@@ -166,12 +82,15 @@ function App() {
   const clearAnimationTimerRef = useRef<number | null>(null)
   const pressStateRef = useRef<PressState | null>(null)
   const suppressClickRef = useRef(false)
+  const sfxRef = useRef<SfxController | null>(null)
+  const previousGameOverRef = useRef(game.gameOver)
 
-  const benchmark = useMemo(() => getBenchmarkCopy(game), [game])
+  const benchmark = useMemo(() => calculateBenchmark(game), [game])
   const activeRackIndex = dragState?.rackIndex ?? selectedRackIndex
   const selectedPiece =
     activeRackIndex === null ? null : game.rack[activeRackIndex] ?? null
   const remainingPieces = game.rack.filter(Boolean).length
+  const fillRatio = getFillRatio(game.board)
   const resolvedHoverOrigin = useMemo(() => {
     if (!selectedPiece || !hoveredCell) {
       return null
@@ -192,11 +111,8 @@ function App() {
         resolvedHoverOrigin.x,
         resolvedHoverOrigin.y,
       ),
-      snapped:
-        hoveredCell !== null &&
-        (resolvedHoverOrigin.x !== hoveredCell.x || resolvedHoverOrigin.y !== hoveredCell.y),
     }
-  }, [game.board, hoveredCell, resolvedHoverOrigin, selectedPiece])
+  }, [game.board, resolvedHoverOrigin, selectedPiece])
   const previewBounds = useMemo(() => {
     if (!selectedPiece || !resolvedHoverOrigin) {
       return null
@@ -209,13 +125,39 @@ function App() {
       height: selectedPiece.height,
     }
   }, [resolvedHoverOrigin, selectedPiece])
+  const isDraggingPiece = dragState !== null && selectedPiece !== null
+  const mobilePlacementCopy =
+    isCoarsePointer && isDraggingPiece && selectedPiece && resolvedHoverOrigin
+      ? {
+          title: selectedPiece.name,
+          detail: `${preview?.valid ? 'Release at' : 'Blocked at'} ${resolvedHoverOrigin.x + 1}, ${resolvedHoverOrigin.y + 1}`,
+        }
+      : null
+  const isNewRecord =
+    bestRun !== null &&
+    game.gameOver &&
+    game.score > 0 &&
+    bestRun.score === game.score &&
+    bestRun.benchmarkScore === benchmark.overall
+  const gameOverHeadline = isNewRecord ? 'New Best Run' : 'No More Moves'
+  const gameOverCopy = isNewRecord
+    ? 'You squeezed out your strongest run so far. Reset and see if you can beat the new mark.'
+    : 'None of the remaining draft pieces can fit on the board. Reset to start a fresh run.'
 
-  useEffect(() => {
-    if (game.placements === 0 || !game.gameOver) {
+  const getSfx = () => {
+    if (!sfxRef.current) {
+      sfxRef.current = createSfxController()
+    }
+
+    return sfxRef.current
+  }
+
+  const maybeStoreBestRun = (state: GameState) => {
+    if (state.placements === 0 || !state.gameOver) {
       return
     }
 
-    const currentRun = createBestRun(game)
+    const currentRun = createBestRun(state)
 
     if (
       !bestRun ||
@@ -226,7 +168,35 @@ function App() {
       setBestRun(currentRun)
       saveBestRun(currentRun)
     }
-  }, [bestRun, game])
+  }
+
+  const triggerClearAnimation = (state: GameState) => {
+    if (state.lastClearPulse === 0 || state.lastClearedKeys.length === 0) {
+      return
+    }
+
+    if (clearAnimationTimerRef.current !== null) {
+      window.clearTimeout(clearAnimationTimerRef.current)
+    }
+
+    setClearAnimation({
+      pulse: state.lastClearPulse,
+      keys: new Set(state.lastClearedKeys),
+      rows: state.lastClearedRows,
+      columns: state.lastClearedColumns,
+    })
+    getSfx().clear(state.lastClearedRows.length + state.lastClearedColumns.length)
+
+    clearAnimationTimerRef.current = window.setTimeout(() => {
+      setClearAnimation(null)
+      clearAnimationTimerRef.current = null
+    }, 620)
+  }
+
+  useEffect(() => {
+    getSfx().setMusicEnabled(musicEnabled)
+    saveMusicEnabled(musicEnabled)
+  }, [musicEnabled])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -246,23 +216,6 @@ function App() {
     }
   }, [])
 
-  useEffect(() => {
-    const nextSelection = pickNextSelection(game.rack, game.board)
-
-    if (selectedRackIndex === null) {
-      if (nextSelection !== null) {
-        setSelectedRackIndex(nextSelection)
-      }
-      return
-    }
-
-    const currentPiece = game.rack[selectedRackIndex]
-
-    if (!currentPiece || !hasAnyRackFit(game.board, [currentPiece])) {
-      setSelectedRackIndex(nextSelection)
-    }
-  }, [game, selectedRackIndex])
-
   useEffect(
     () => () => {
       if (longPressTimerRef.current !== null) {
@@ -272,36 +225,45 @@ function App() {
       if (clearAnimationTimerRef.current !== null) {
         window.clearTimeout(clearAnimationTimerRef.current)
       }
+
+      sfxRef.current?.dispose()
     },
     [],
   )
 
-  useEffect(() => {
-    if (game.lastClearPulse === 0 || game.lastClearedKeys.length === 0) {
+  const handleRotate = (direction: 'cw' | 'ccw', explicitIndex?: number) => {
+    const targetIndex = explicitIndex ?? selectedRackIndex ?? activeRackIndex
+
+    if (targetIndex === null) {
       return
     }
 
-    if (clearAnimationTimerRef.current !== null) {
-      window.clearTimeout(clearAnimationTimerRef.current)
-    }
+    getSfx().unlock()
+    setGame((current) => {
+      const piece = current.rack[targetIndex]
 
-    setClearAnimation({
-      pulse: game.lastClearPulse,
-      keys: new Set(game.lastClearedKeys),
-      rows: game.lastClearedRows,
-      columns: game.lastClearedColumns,
+      if (!piece) {
+        return current
+      }
+
+      const rack = current.rack.map((entry, index) =>
+        index === targetIndex ? rotateRackPiece(piece, direction) : entry,
+      )
+
+      return {
+        ...current,
+        rack,
+        notice: `${piece.name} rotated ${direction === 'cw' ? 'clockwise' : 'counterclockwise'}.`,
+      }
     })
 
-    clearAnimationTimerRef.current = window.setTimeout(() => {
-      setClearAnimation(null)
-      clearAnimationTimerRef.current = null
-    }, 620)
-  }, [
-    game.lastClearPulse,
-    game.lastClearedColumns,
-    game.lastClearedKeys,
-    game.lastClearedRows,
-  ])
+    getSfx().rotate()
+    setSelectedRackIndex(targetIndex)
+  }
+
+  const handleKeyboardRotate = useEffectEvent(() => {
+    handleRotate('cw')
+  })
 
   useEffect(() => {
     if (isCoarsePointer || typeof window === 'undefined') {
@@ -309,16 +271,12 @@ function App() {
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.repeat || event.defaultPrevented) {
-        return
-      }
-
-      if (event.key.toLowerCase() !== 'r') {
+      if (event.repeat || event.defaultPrevented || event.key.toLowerCase() !== 'r') {
         return
       }
 
       event.preventDefault()
-      handleRotate('cw')
+      handleKeyboardRotate()
     }
 
     window.addEventListener('keydown', handleKeyDown)
@@ -326,7 +284,7 @@ function App() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [isCoarsePointer, selectedRackIndex, activeRackIndex, game.rack])
+  }, [isCoarsePointer])
 
   const clearLongPress = () => {
     if (longPressTimerRef.current !== null) {
@@ -375,6 +333,7 @@ function App() {
     clientY: number,
   ) => {
     suppressClickRef.current = true
+    getSfx().unlock()
     setSelectedRackIndex(rackIndex)
     setDragState({
       rackIndex,
@@ -386,12 +345,14 @@ function App() {
   }
 
   const startNewGame = () => {
-    const nextGame = createInitialGameState()
-    setGame(nextGame)
+    getSfx().unlock()
+    getSfx().reset()
+    const nextSession = createInitialSession()
+    setGame(nextSession.game)
     setHoveredCell(null)
     setDragState(null)
     setClearAnimation(null)
-    setSelectedRackIndex(pickNextSelection(nextGame.rack, nextGame.board))
+    setSelectedRackIndex(nextSession.selectedRackIndex)
   }
 
   const handleRackSelect = (index: number) => {
@@ -401,6 +362,10 @@ function App() {
       return
     }
 
+    getSfx().unlock()
+    if (selectedRackIndex !== index) {
+      getSfx().select()
+    }
     setSelectedRackIndex((current) => (current === index ? null : index))
   }
 
@@ -415,9 +380,11 @@ function App() {
       return
     }
 
+    getSfx().unlock()
     const resolvedOrigin = clampPlacementOrigin(piece, x, y)
 
     if (!canPlacePiece(game.board, piece, resolvedOrigin.x, resolvedOrigin.y)) {
+      getSfx().error()
       setGame((current) => ({
         ...current,
         notice: `No room for ${piece.name.toLowerCase()} at ${resolvedOrigin.x + 1}, ${resolvedOrigin.y + 1}.`,
@@ -426,7 +393,10 @@ function App() {
     }
 
     const result = getPlacementResult(game, rackIndex, resolvedOrigin.x, resolvedOrigin.y)
+    getSfx().place(piece.mass)
     setGame(result)
+    triggerClearAnimation(result)
+    maybeStoreBestRun(result)
     setHoveredCell(null)
     setDragState(null)
     setSelectedRackIndex(pickNextSelection(result.rack, result.board))
@@ -450,6 +420,7 @@ function App() {
       return
     }
 
+    getSfx().unlock()
     event.currentTarget.setPointerCapture(event.pointerId)
     clearLongPress()
     pressStateRef.current = {
@@ -589,217 +560,18 @@ function App() {
     handleRackSelect(index)
   }
 
-  const handleRotate = (
-    direction: 'cw' | 'ccw',
-    explicitIndex?: number,
-  ) => {
-    const targetIndex = explicitIndex ?? selectedRackIndex ?? activeRackIndex
-
-    if (targetIndex === null) {
-      return
+  useEffect(() => {
+    if (!previousGameOverRef.current && game.gameOver) {
+      getSfx().gameOver()
     }
 
-    setGame((current) => {
-      const piece = current.rack[targetIndex]
+    previousGameOverRef.current = game.gameOver
+  }, [game.gameOver])
 
-      if (!piece) {
-        return current
-      }
-
-      const rack = current.rack.map((entry, index) =>
-        index === targetIndex ? rotateRackPiece(piece, direction) : entry,
-      )
-
-      return {
-        ...current,
-        rack,
-        notice: `${piece.name} rotated ${direction === 'cw' ? 'clockwise' : 'counterclockwise'}.`,
-      }
-    })
-
-    setSelectedRackIndex(targetIndex)
+  const handleMusicToggle = () => {
+    getSfx().unlock()
+    setMusicEnabled((current) => !current)
   }
-
-  const fillRatio = getFillRatio(game.board)
-  const isDraggingPiece = dragState !== null && selectedPiece !== null
-  const mobilePlacementCopy =
-    isCoarsePointer && isDraggingPiece && selectedPiece && resolvedHoverOrigin
-      ? {
-          title: selectedPiece.name,
-          detail: `${preview?.valid ? 'Release at' : 'Blocked at'} ${resolvedHoverOrigin.x + 1}, ${resolvedHoverOrigin.y + 1}`,
-        }
-      : null
-  const isNewRecord =
-    bestRun !== null &&
-    game.gameOver &&
-    game.score > 0 &&
-    bestRun.score === game.score &&
-    bestRun.benchmarkScore === benchmark.overall
-  const gameOverHeadline = isNewRecord ? 'New Best Run' : 'No More Moves'
-  const gameOverCopy = isNewRecord
-    ? 'You squeezed out your strongest run so far. Reset and see if you can beat the new mark.'
-    : 'None of the remaining draft pieces can fit on the board. Reset to start a fresh run.'
-
-  const renderRackSection = (mode: 'desktop' | 'mobile') => (
-    <section
-      className={`sidebar-card rack-panel ${mode}-only ${mode === 'mobile' ? 'mobile-draft-dock' : ''}`}
-    >
-      <div className="card-header">
-        <div>
-          <p className="card-label">Rack</p>
-          <h2>{mode === 'mobile' ? 'Draft Tray' : 'Current Draft'}</h2>
-        </div>
-        <p className="card-note">
-          {isRackEmpty(game.rack)
-            ? 'Fresh pieces arrive after this turn resolves.'
-            : `${remainingPieces}/${RACK_SIZE} pieces remaining`}
-        </p>
-      </div>
-
-      <div className={`rack-grid ${mode === 'mobile' ? 'mobile-rack-grid' : ''}`}>
-        {game.rack.map((piece, index) => {
-          const isSelected = selectedRackIndex === index
-          const isPlayable = piece ? hasAnyRackFit(game.board, [piece]) : false
-
-          return (
-            <button
-              key={`${mode}-${piece?.instanceId ?? `empty-${index}`}`}
-              type="button"
-              draggable={false}
-              className={`rack-card ${isSelected ? 'selected' : ''} ${dragState?.rackIndex === index ? 'dragging' : ''} ${!piece ? 'spent' : ''} ${mode === 'mobile' ? 'mobile-rack-card' : ''}`}
-              onClick={() => handleRackCardClick(index)}
-              disabled={!piece}
-              onPointerDown={(event) => handleRackPointerDown(event, index)}
-              onPointerMove={(event) => handleRackPointerMove(event, index)}
-              onPointerUp={(event) => finishPointerInteraction(event, index)}
-              onPointerCancel={(event) => cancelPointerInteraction(event, index)}
-            >
-              {piece ? (
-                <>
-                  <div className="rack-card-top">
-                    <div>
-                      <p className="rack-name">{piece.name}</p>
-                      <p className="rack-meta">
-                        {piece.mass} cells / {piece.width}x{piece.height}
-                      </p>
-                    </div>
-                    <span className={`fit-badge ${isPlayable ? 'playable' : 'blocked'}`}>
-                      {isPlayable ? 'Fits' : 'Blocked'}
-                    </span>
-                  </div>
-                  {renderPieceCells(piece)}
-                </>
-              ) : (
-                <div className="rack-empty">
-                  <span>Placed</span>
-                </div>
-              )}
-            </button>
-          )
-        })}
-      </div>
-
-      <p className={`interaction-copy ${mode === 'mobile' ? 'mobile-interaction-copy' : ''}`}>
-        {isCoarsePointer
-          ? 'Tap a piece to rotate it clockwise. Long-press a piece to drag it onto the board and release to place it.'
-          : 'Click a piece to select it, then click a board cell to place it. Press R to rotate clockwise, or long-press to drag and drop.'}
-      </p>
-    </section>
-  )
-
-  const renderRunPanel = (mode: 'desktop' | 'mobile') => (
-    <section className={`sidebar-card ${mode}-only`}>
-      <div className="card-header">
-        <div>
-          <p className="card-label">Run</p>
-          <h2>{mode === 'mobile' ? 'Run Stats' : 'Run Console'}</h2>
-        </div>
-        <div className="hud-rank">
-          <span>{benchmark.rank}</span>
-          <strong>{benchmark.overall}</strong>
-        </div>
-      </div>
-
-      <div className="run-summary">
-        <div className="summary-block">
-          <span className="summary-label">Benchmark</span>
-          <strong>{benchmark.label}</strong>
-        </div>
-        <div className="summary-block">
-          <span className="summary-label">Status</span>
-          <strong>{game.gameOver ? 'Failed' : 'Live'}</strong>
-        </div>
-      </div>
-
-      <div className={`metric-grid ${mode === 'mobile' ? 'mobile-metric-grid' : ''}`}>
-        <div className="metric-card">
-          <span>Score</span>
-          <strong>{game.score}</strong>
-        </div>
-        <div className="metric-card">
-          <span>Lines cleared</span>
-          <strong>{game.totalLinesCleared}</strong>
-        </div>
-        <div className="metric-card">
-          <span>Rounds survived</span>
-          <strong>{game.roundsCompleted}</strong>
-        </div>
-        <div className="metric-card">
-          <span>Best combo</span>
-          <strong>{game.maxCombo}</strong>
-        </div>
-        <div className="metric-card">
-          <span>Efficiency</span>
-          <strong>
-            {game.totalPlacedCells === 0
-              ? '0%'
-              : `${Math.round((game.totalClearedCells / game.totalPlacedCells) * 100)}%`}
-          </strong>
-        </div>
-      </div>
-
-      <div className={`mobile-benchmark-breakdown ${mode === 'desktop' ? 'desktop-breakdown' : ''}`}>
-        {benchmark.parts.map((part) => (
-          <div key={part.label} className="mobile-benchmark-pill">
-            <span>{part.label}</span>
-            <strong>{part.value}</strong>
-          </div>
-        ))}
-      </div>
-
-      {bestRun ? (
-        <div className={`record-grid ${mode === 'mobile' ? 'mobile-record-grid' : ''}`}>
-          <div className="record-item">
-            <span>Best benchmark</span>
-            <strong>
-              {bestRun.benchmarkScore} / {bestRun.benchmarkRank}
-            </strong>
-          </div>
-          <div className="record-item">
-            <span>Best score</span>
-            <strong>{bestRun.score}</strong>
-          </div>
-          <div className="record-item">
-            <span>Lines</span>
-            <strong>{bestRun.linesCleared}</strong>
-          </div>
-          <div className="record-item">
-            <span>Rounds</span>
-            <strong>{bestRun.roundsCompleted}</strong>
-          </div>
-          <div className="record-item">
-            <span>Best combo</span>
-            <strong>{bestRun.maxCombo}</strong>
-          </div>
-          <p className="record-date">{formatDate(bestRun.playedAt)}</p>
-        </div>
-      ) : (
-        <p className="empty-copy">
-          Finish a run to save a local benchmark record in this browser.
-        </p>
-      )}
-    </section>
-  )
 
   return (
     <main className="app-shell">
@@ -808,30 +580,44 @@ function App() {
           <p className="eyebrow">Grid Forge</p>
           <h1>10x10 Tactical Stack</h1>
         </div>
-        <div className="top-metrics">
-          <div className="top-metric">
-            <span>Score</span>
-            <strong>{game.score}</strong>
+        <div className="top-strip-controls">
+          <div className="top-metrics">
+            <div className="top-metric">
+              <span>Score</span>
+              <strong>{game.score}</strong>
+            </div>
+            <div className="top-metric">
+              <span>Rank</span>
+              <strong>{benchmark.rank}</strong>
+            </div>
+            <div className="top-metric">
+              <span>Lines</span>
+              <strong>{game.totalLinesCleared}</strong>
+            </div>
+            <div className="top-metric">
+              <span>Pieces</span>
+              <strong>{remainingPieces}</strong>
+            </div>
           </div>
-          <div className="top-metric">
-            <span>Rank</span>
-            <strong>{benchmark.rank}</strong>
-          </div>
-          <div className="top-metric">
-            <span>Pieces</span>
-            <strong>{remainingPieces}</strong>
-          </div>
-          <div className="top-metric">
-            <span>Board</span>
-            <strong>{formatPercent(fillRatio)}</strong>
-          </div>
+          <MusicToggle
+            mode="desktop"
+            musicEnabled={musicEnabled}
+            onToggle={handleMusicToggle}
+          />
         </div>
       </section>
 
       <section className="mobile-topbar mobile-only">
         <div className="mobile-brand">
-          <p className="eyebrow">Grid Forge</p>
-          <h1>10x10 Run</h1>
+          <div>
+            <p className="eyebrow">Grid Forge</p>
+            <h1>10x10 Run</h1>
+          </div>
+          <MusicToggle
+            mode="mobile"
+            musicEnabled={musicEnabled}
+            onToggle={handleMusicToggle}
+          />
         </div>
 
         <div className="mobile-stat-strip">
@@ -844,200 +630,65 @@ function App() {
             <strong>{benchmark.rank}</strong>
           </div>
           <div className="mobile-stat">
-            <span>Pieces</span>
-            <strong>{remainingPieces}</strong>
+            <span>Lines</span>
+            <strong>{game.totalLinesCleared}</strong>
           </div>
         </div>
       </section>
 
       <section className="game-grid">
-        <div className="board-card">
-          <div className="card-header">
-            <div>
-              <p className="card-label">Board</p>
-              <h2>Placement Arena</h2>
-            </div>
-            <p className="card-note">
-              Fill entire rows or columns to erase them. Current occupancy:{' '}
-              <strong>{formatPercent(fillRatio)}</strong>
-            </p>
-          </div>
-
-          <div className={`board-wrap ${isDraggingPiece ? 'drag-active' : ''}`}>
-            {mobilePlacementCopy ? (
-              <div className={`placement-readout ${preview?.valid ? 'valid' : 'invalid'}`}>
-                <strong>{mobilePlacementCopy.title}</strong>
-                <span>{mobilePlacementCopy.detail}</span>
-              </div>
-            ) : null}
-
-            <div
-              className="board-grid"
-              ref={boardRef}
-              style={
-                {
-                  '--board-size': BOARD_SIZE,
-                  '--board-gap': '3px',
-                } as CSSProperties
-              }
-            >
-              {game.board.map((row, y) =>
-                row.map((cell, x) => {
-                  const previewKey = `${x}:${y}`
-                  const previewCell = preview?.cells.get(previewKey)
-                  const isClearing = clearAnimation?.keys.has(previewKey) ?? false
-                  const previewClass = previewCell
-                    ? preview?.valid
-                      ? 'preview-valid'
-                      : 'preview-invalid'
-                    : ''
-                  const cellStyle =
-                    cell || (previewCell && selectedPiece)
-                      ? ({
-                          ...(cell ? { '--cell-color': cell } : {}),
-                          ...(previewCell && selectedPiece
-                            ? { '--piece-color': selectedPiece.color }
-                            : {}),
-                        } as CSSProperties)
-                      : undefined
-
-                  return (
-                    <button
-                      key={previewKey}
-                      type="button"
-                      className={`board-cell ${cell ? 'filled' : ''} ${isClearing ? 'clearing' : ''} ${previewClass} ${resolvedHoverOrigin?.x === x && resolvedHoverOrigin?.y === y ? 'drop-target' : ''}`}
-                      style={cellStyle}
-                      onMouseEnter={() => setHoveredCell({ x, y })}
-                      onFocus={() => setHoveredCell({ x, y })}
-                      onClick={() => handleBoardClick(x, y)}
-                      aria-label={`Board cell ${x + 1}, ${y + 1}`}
-                    />
-                  )
-                }),
-              )}
-
-              {clearAnimation?.rows.map((row) => (
-                <div
-                  key={`row-${clearAnimation.pulse}-${row}`}
-                  className="line-sweep row"
-                  style={
-                    {
-                      '--line-index': row,
-                    } as CSSProperties
-                  }
-                />
-              ))}
-
-              {clearAnimation?.columns.map((column) => (
-                <div
-                  key={`column-${clearAnimation.pulse}-${column}`}
-                  className="line-sweep column"
-                  style={
-                    {
-                      '--line-index': column,
-                    } as CSSProperties
-                  }
-                />
-              ))}
-
-              {isDraggingPiece && resolvedHoverOrigin && previewBounds && selectedPiece ? (
-                <>
-                  <div
-                    className={`placement-footprint ${preview?.valid ? 'valid' : 'invalid'}`}
-                    style={
-                      {
-                        '--footprint-x': previewBounds.x,
-                        '--footprint-y': previewBounds.y,
-                        '--footprint-width': previewBounds.width,
-                        '--footprint-height': previewBounds.height,
-                        '--piece-color': selectedPiece.color,
-                      } as CSSProperties
-                    }
-                  >
-                    {selectedPiece.cells.map((cell) => (
-                      <span
-                        key={`footprint-${cell.x}-${cell.y}`}
-                        className="placement-footprint-cell"
-                        style={
-                          {
-                            '--footprint-cell-x': cell.x,
-                            '--footprint-cell-y': cell.y,
-                          } as CSSProperties
-                        }
-                      />
-                    ))}
-                  </div>
-
-                  <div
-                    className={`placement-anchor ${preview?.valid ? 'valid' : 'invalid'}`}
-                    style={
-                      {
-                        '--anchor-x': resolvedHoverOrigin.x,
-                        '--anchor-y': resolvedHoverOrigin.y,
-                      } as CSSProperties
-                    }
-                  >
-                    <span>{preview?.valid ? 'Drop' : 'Blocked'}</span>
-                  </div>
-                </>
-              ) : null}
-            </div>
-
-            {game.gameOver ? (
-              <div className="gameover-overlay">
-                <p className="eyebrow">Run Over</p>
-                <h3>{gameOverHeadline}</h3>
-                <p className="gameover-copy">{gameOverCopy}</p>
-
-                <div className="gameover-metrics">
-                  <div className="gameover-metric">
-                    <span>Score</span>
-                    <strong>{game.score}</strong>
-                  </div>
-                  <div className="gameover-metric">
-                    <span>Rank</span>
-                    <strong>
-                      {benchmark.rank} / {benchmark.overall}
-                    </strong>
-                  </div>
-                  <div className="gameover-metric">
-                    <span>Lines</span>
-                    <strong>{game.totalLinesCleared}</strong>
-                  </div>
-                  <div className="gameover-metric">
-                    <span>Rounds</span>
-                    <strong>{game.roundsCompleted}</strong>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  className="gameover-button"
-                  onClick={startNewGame}
-                >
-                  Run it back
-                </button>
-              </div>
-            ) : null}
-          </div>
-
-          <div className="notice-row">
-            <p className={`notice-pill ${game.gameOver ? 'failed' : ''}`}>{game.notice}</p>
-            <button type="button" className="reset-button" onClick={startNewGame}>
-              New run
-            </button>
-          </div>
-        </div>
+        <GameBoard
+          game={game}
+          benchmark={benchmark}
+          fillRatio={fillRatio}
+          isDraggingPiece={isDraggingPiece}
+          mobilePlacementCopy={mobilePlacementCopy}
+          preview={preview}
+          resolvedHoverOrigin={resolvedHoverOrigin}
+          previewBounds={previewBounds}
+          selectedPiece={selectedPiece}
+          clearAnimation={clearAnimation}
+          boardRef={boardRef}
+          gameOverHeadline={gameOverHeadline}
+          gameOverCopy={gameOverCopy}
+          onHoverCell={setHoveredCell}
+          onBoardClick={handleBoardClick}
+          onStartNewGame={startNewGame}
+        />
 
         <aside className="sidebar desktop-only">
-          {renderRackSection('desktop')}
-          {renderRunPanel('desktop')}
+          <RackPanel
+            mode="desktop"
+            rack={game.rack}
+            board={game.board}
+            isCoarsePointer={isCoarsePointer}
+            selectedRackIndex={selectedRackIndex}
+            dragRackIndex={dragState?.rackIndex ?? null}
+            onRackCardClick={handleRackCardClick}
+            onRackPointerDown={handleRackPointerDown}
+            onRackPointerMove={handleRackPointerMove}
+            onRackPointerUp={finishPointerInteraction}
+            onRackPointerCancel={cancelPointerInteraction}
+          />
+          <RunPanel mode="desktop" game={game} benchmark={benchmark} bestRun={bestRun} />
         </aside>
       </section>
 
       <section className="mobile-stack mobile-only">
-        {renderRackSection('mobile')}
-        {renderRunPanel('mobile')}
+        <RackPanel
+          mode="mobile"
+          rack={game.rack}
+          board={game.board}
+          isCoarsePointer={isCoarsePointer}
+          selectedRackIndex={selectedRackIndex}
+          dragRackIndex={dragState?.rackIndex ?? null}
+          onRackCardClick={handleRackCardClick}
+          onRackPointerDown={handleRackPointerDown}
+          onRackPointerMove={handleRackPointerMove}
+          onRackPointerUp={finishPointerInteraction}
+          onRackPointerCancel={cancelPointerInteraction}
+        />
+        <RunPanel mode="mobile" game={game} benchmark={benchmark} bestRun={bestRun} />
       </section>
 
       {dragState && selectedPiece ? (
@@ -1058,7 +709,7 @@ function App() {
               </span>
             </>
           ) : (
-            renderPieceCells(selectedPiece, 'drag-piece-grid desktop-drag-piece-grid')
+            <PiecePreview piece={selectedPiece} className="drag-piece-grid desktop-drag-piece-grid" />
           )}
         </div>
       ) : null}
