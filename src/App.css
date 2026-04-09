@@ -102,6 +102,64 @@
   gap: 10px;
 }
 
+.top-strip-controls {
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.music-toggle {
+  appearance: none;
+  border: 3px solid var(--gb-ink);
+  cursor: pointer;
+  min-width: 124px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  color: var(--gb-ink);
+  background: var(--gb-panel-2);
+  box-shadow:
+    0 5px 0 0 var(--gb-shadow),
+    inset 2px 2px 0 rgba(219, 232, 178, 0.66),
+    inset -3px -3px 0 rgba(56, 79, 31, 0.24);
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  text-transform: uppercase;
+  transition:
+    transform 120ms steps(2, end),
+    box-shadow 120ms steps(2, end),
+    background-color 120ms steps(2, end);
+}
+
+.music-toggle:hover,
+.music-toggle:focus-visible {
+  outline: none;
+  transform: translate(-1px, -1px);
+}
+
+.music-toggle[aria-pressed='true'] {
+  background: #9ae59c;
+}
+
+.music-toggle[aria-pressed='false'] {
+  background: #ffd7e8;
+}
+
+.music-toggle-label {
+  font-size: 0.58rem;
+  letter-spacing: 0.12em;
+  color: rgba(31, 47, 23, 0.72);
+  white-space: nowrap;
+}
+
+.music-toggle strong {
+  font-size: 0.82rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
 .top-metric,
 .mobile-stat {
   padding: 12px 14px;
@@ -987,9 +1045,18 @@
 
   .mobile-brand {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     justify-content: space-between;
     gap: 10px;
+  }
+
+  .top-strip-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .music-toggle {
+    min-width: 0;
   }
 
   .mobile-brand h1 {
@@ -1002,6 +1069,20 @@
   .mobile-brand .eyebrow {
     font-size: 0.6rem;
     letter-spacing: 0.16em;
+  }
+
+  .mobile-music-toggle {
+    min-width: 88px;
+    padding: 8px 9px;
+    gap: 8px;
+  }
+
+  .mobile-music-toggle .music-toggle-label {
+    font-size: 0.48rem;
+  }
+
+  .mobile-music-toggle strong {
+    font-size: 0.72rem;
   }
 
   .mobile-stat-strip {
