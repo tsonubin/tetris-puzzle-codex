@@ -41,6 +41,8 @@ type LoopPlayer = {
 
 type BgmHandle = {
   conductor: Conductor
+  loopDurationMs: number
+  loopTimerId: number | null
   player: LoopPlayer
 }
 
@@ -339,6 +341,10 @@ export function createSfxController(): SfxController {
   let bgmToken = 0
 
   const destroyBgmHandle = (handle: BgmHandle) => {
+    if (handle.loopTimerId !== null && typeof window !== 'undefined') {
+      window.clearTimeout(handle.loopTimerId)
+    }
+
     try {
       handle.player.stop(false)
     } catch {
@@ -367,14 +373,34 @@ export function createSfxController(): SfxController {
     destroyBgmHandle(handle)
   }
 
+  const scheduleBgmReplay = (handle: BgmHandle, token: number) => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    if (handle.loopTimerId !== null) {
+      window.clearTimeout(handle.loopTimerId)
+    }
+
+    handle.loopTimerId = window.setTimeout(() => {
+      if (token !== bgmToken || !musicEnabled || bgmHandle !== handle) {
+        return
+      }
+
+      replayBgm(handle, token)
+    }, handle.loopDurationMs)
+  }
+
   const replayBgm = (handle: BgmHandle, token: number) => {
     if (token !== bgmToken || !musicEnabled || bgmHandle !== handle) {
       return
     }
 
     try {
+      handle.player.stop(false)
       handle.player.setTime?.(0)
       handle.player.play()
+      scheduleBgmReplay(handle, token)
     } catch {
       bgmHandle = null
       destroyBgmHandle(handle)
@@ -388,38 +414,24 @@ export function createSfxController(): SfxController {
     }
 
     const token = ++bgmToken
+    const song = buildArcadeBgmSong()
     const conductor = new Conductor()
     conductor.setMasterVolume(0.03)
     conductor.setNoteBufferLength(32)
 
-    const player = conductor.load(buildArcadeBgmSong()) as LoopPlayer
-
-    bgmHandle = {
-      conductor,
-      player,
-    }
+    const player = conductor.load(song) as LoopPlayer
 
     const handle = {
       conductor,
+      loopDurationMs: estimateCueDuration(song),
+      loopTimerId: null,
       player,
     }
 
     bgmHandle = handle
 
-    conductor.setOnFinishedCallback(() => {
-      if (token !== bgmToken || !musicEnabled || bgmHandle !== handle) {
-        return
-      }
-
-      replayBgm(handle, token)
-    })
-
     void resumeContext(conductor.audioContext as AudioContextLike).then(() => {
-      if (
-        token !== bgmToken ||
-        bgmHandle !== handle ||
-        !musicEnabled
-      ) {
+      if (token !== bgmToken || bgmHandle !== handle || !musicEnabled) {
         closeContext(conductor.audioContext as AudioContextLike)
         if (bgmHandle === handle) {
           bgmHandle = null
@@ -429,6 +441,7 @@ export function createSfxController(): SfxController {
 
       try {
         player.play()
+        scheduleBgmReplay(handle, token)
       } catch {
         stopBgm()
       }
